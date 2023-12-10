@@ -12,6 +12,6 @@ class MessageApi(BaseModel):
     message: str
     typemessage: str
     valuetype: str
-    solution: str | None
+    solution: str 
     enterprise: str
 

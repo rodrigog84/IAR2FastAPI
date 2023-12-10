@@ -10,9 +10,9 @@ from config.mysql_conection import dbMysql
 
 #data conection Wsapi
 from config.apiws import apiwshost
-from config.apiws import apiwsport
-from config.apiws import apiwsclosealertminutes
-from config.apiws import apiwscloseminutes
+#from config.apiws import apiwsport
+#from config.apiws import apiwsclosealertminutes
+#from config.apiws import apiwscloseminutes
 
 #quita problema cors
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,7 +45,7 @@ from datetime import date
 
 import os
 import openai
-#import tiktoken
+import tiktoken
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 
@@ -303,11 +303,28 @@ def finish_message():
         mycursor2 = miConexion.cursor()
 
         #OBTIENE EL ÚLTIMO MENSAJE DEL NUMERO QUE SE ESTÁ COMUNICANDO
-        mycursor2.execute("SELECT 	messageresponsecustomer ,typeresponse,TIMESTAMPDIFF(MINUTE,created_at,NOW()) AS minutos FROM iar2_captura WHERE 	id = (SELECT   MAX(id) FROM iar2_captura c WHERE 	typemessage = '%s' AND 		valuetype = '%s' and identerprise = %d)" % (typemessage,valuetype,identerprise))
+        mycursor2.execute("""SELECT 	c.messageresponsecustomer 
+                                        ,c.typeresponse
+                                        ,TIMESTAMPDIFF(MINUTE,c.created_at,NOW()) AS minutos 
+                                        ,e.port
+                                        ,e.closealertminutes
+                                        ,e.closeminutes
+                            FROM        iar2_captura c  
+                            INNER JOIN  iar2_empresas e  on c.identerprise = e.id
+                            WHERE 	c.id = (
+                                                                SELECT   MAX(id) 
+                                                                FROM    iar2_captura c 
+                                                                WHERE 	typemessage = '%s' 
+                                                                AND 	valuetype = '%s' 
+                                                                AND     identerprise = %d
+                                                                )""" % (typemessage,valuetype,identerprise))
         for row_register in mycursor2.fetchall():
                 messageresponsecustomer = row_register[0]
                 typeresponse = row_register[1]
                 minutos = row_register[2]
+                apiwsport = row_register[3]
+                apiwsclosealertminutes = row_register[4]
+                apiwscloseminutes = row_register[5]
                 
                 url = f'http://' + apiwshost + ':' + apiwsport + '/api/CallBack'
                 mycursor3 = miConexion.cursor()
