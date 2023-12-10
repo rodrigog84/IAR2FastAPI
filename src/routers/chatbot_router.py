@@ -61,8 +61,8 @@ def get_messages(enterprise: str,solution: str):
 ### ENVIA MENSAJE DE FINALIZACION DE CONVERSACION
 @chatbot_router.get('/finish_message/')
 def finish_message():
-    claim.finish_message()
-    return {'data' : 'Conversaciones Finalizadas'}
+    message = claim.finish_message()
+    return {'data' : message}
 
 
 

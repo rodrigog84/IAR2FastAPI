@@ -301,7 +301,7 @@ def finish_message():
         content = {"typemessage":typemessage,"valuetype":valuetype,"identerprise":identerprise}
         reclamos.append(content)
         mycursor2 = miConexion.cursor()
-
+        
         #OBTIENE EL ÚLTIMO MENSAJE DEL NUMERO QUE SE ESTÁ COMUNICANDO
         mycursor2.execute("""SELECT 	c.messageresponsecustomer 
                                         ,c.typeresponse
@@ -326,7 +326,7 @@ def finish_message():
                 apiwsclosealertminutes = row_register[4]
                 apiwscloseminutes = row_register[5]
                 
-                url = f'http://' + apiwshost + ':' + apiwsport + '/api/CallBack'
+                url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
                 mycursor3 = miConexion.cursor()
                 # SI ULTIMO MENSAJE FUE DEL CHATBOT, ES DE WHATSAPP, ES DE INTERACCION O SALUDO Y FUE HACE MÁS DE 30 MINUTOS, ENVIAR MENSAJE DE ALERTA DE CIERRE
                 if typemessage == 'Whatsapp' and messageresponsecustomer != '' and (typeresponse == 'Interaccion' or typeresponse == 'Saludo') and minutos > apiwsclosealertminutes:
@@ -379,4 +379,4 @@ def finish_message():
 
 
     miConexion.close()
-    return {'data' : registro}
+    return {'data' : 'Conversaciones Finalizadas'}
