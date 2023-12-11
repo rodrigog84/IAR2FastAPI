@@ -21,6 +21,7 @@ from datetime import date
 
 #INCLUDE REPOSITORY
 from src.repository import claim
+from src.repository import utils
 
 
 import os
@@ -65,4 +66,17 @@ def finish_message():
     return {'data' : message}
 
 
+
+
+### ENVIA MENSAJE DE VUELTA
+@chatbot_router.post('/send_message_back/')
+def send_message_back(messagedata: MessageApi):
+
+    if messagedata.typemessage == 'Whatsapp':     
+        reclamos = utils.send_message_back_Ws(messagedata)
+    else:
+        reclamos = []
+    
+
+    return {'respuesta': 'Respuesta Enviada'}
 
