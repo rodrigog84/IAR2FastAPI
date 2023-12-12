@@ -21,6 +21,7 @@ from datetime import date
 
 #INCLUDE REPOSITORY
 from src.repository import claim
+from src.repository import faq
 from src.repository import utils
 
 
@@ -40,6 +41,8 @@ def send_message(messagedata: MessageApi):
 
     if messagedata.solution == 'Reclamos':     
         responsecustomer = claim.send_message(messagedata)
+    elif messagedata.solution == 'FAQ': 
+        responsecustomer = faq.send_message(messagedata)
     else:
         responsecustomer = 'Parametros Incorrectos'
 
