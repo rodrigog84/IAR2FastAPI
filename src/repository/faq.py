@@ -91,7 +91,32 @@ def send_message(messagedata: MessageApi):
     else:
         #EVALUA LOS MENSAJES EXISTENTES EN LA ÚLTIMA HORA
         #CONSIDERA TODOS LOS MENSAJES POSTERIORES A UN CIERRE (POR SI TIENE UN CIERRE ANTERIOR EN LA ULTIMA HORA, Y NO CONSIDERA LA ALERTA DE CIERRE EN LA INTERACCION)
-        mycursor.execute("SELECT identification, typemessage, valuetype, message, messageresponseia, messageresponsecustomer, classification, sla, isclaim, typeresponse, derivacion FROM iar2_captura WHERE typemessage = '%s' AND valuetype = '%s' AND identerprise = '%d' AND typeresponse != 'Alerta Cierre' AND created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW() and id > (SELECT ifnull(MAX(id),0) AS id FROM iar2_captura WHERE typemessage = '%s' AND valuetype = '%s' AND identerprise = '%d' AND 	typeresponse = 'Cierre Conversación') ORDER BY created_at " % (messagedata.typemessage,messagedata.valuetype,idempresa,messagedata.typemessage,messagedata.valuetype,idempresa))
+        mycursor.execute("""SELECT  identification
+                                    , typemessage
+                                    , valuetype
+                                    , message
+                                    , messageresponseia
+                                    , messageresponsecustomer
+                                    , classification
+                                    , sla
+                                    , isclaim
+                                    , typeresponse
+                                    , derivacion 
+                            FROM    iar2_captura 
+                            WHERE   typemessage = '%s' 
+                            AND     valuetype = '%s' 
+                            AND     identerprise = '%d' 
+                            AND     typeresponse != 'Alerta Cierre' 
+                            AND     created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW() 
+                            AND     id > (
+                                            SELECT      ifnull(MAX(id),0) AS id 
+                                            FROM        iar2_captura 
+                                            WHERE       typemessage = '%s' 
+                                            AND         valuetype = '%s' 
+                                            AND         identerprise = '%d' 
+                                            AND 	    typeresponse = 'Cierre Conversación'
+                                         ) 
+                            ORDER BY    created_at """ % (messagedata.typemessage,messagedata.valuetype,idempresa,messagedata.typemessage,messagedata.valuetype,idempresa))
 
         mensajes_previos = 0
         reclamo_ingresado = 0
@@ -132,12 +157,27 @@ def send_message(messagedata: MessageApi):
             ############################################################################################################
             ##   OBTENER PREGUNTAS FRECUENTES
 
+            mycursor.execute("""SELECT  question
+                                    , answer
+                            FROM    iar2_faq
+                            WHERE   identerprise = '%d' 
+                            ORDER BY id """ % (idempresa))            
+
+            texts = []
+            question = ""
+            for questions in mycursor.fetchall():
+                question = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
+                texts.append(question)
+
+            '''
             texts = [
                 """¿Qué es el Registro de Empresas y Sociedades? El Registro de Empresas y Sociedades (RES) es un registro electrónico que dispone de un portal en Internet (www.RegistroDeEmpresasySociedades.cl), al cual deben incorporarse las personas jurídicas o empresas que deseen acogerse a la Ley N° 20.659, para los efectos de ser constituidas o migradas, modificadas, transformadas, fusionadas, divididas, terminadas o disueltas. El RES es un registro único y rige en todo el territorio de Chile. Es esencialmente público y está permanentemente actualizado a disposición de quien lo consulte en el sitio web, de manera que asegure la fiel y oportuna publicidad de la información incorporada en él. La información que conste en este Registro da plena fe de su autenticidad y cuenta con valor probatorio en contra de quienes han suscrito los formularios incorporados a este registro y sus empresas.""",
                 """¿Puedo constituir una empresa o sociedad si estoy en Dicom?. Sí, puedes constituir una empresa o sociedad. No es un impedimento estar en Dicom, aunque es posible que los bancos e instituciones financieras impongan restricciones a la hora de otorgar financiamiento.""",
                 """¿Qué tipos de empresas puedo constituir en el Registro de Empresas y Sociedades?. Por el momento, el registro comprende los siguientes tipos de empresas: Empresas Individuales de Responsabilidad Limitada (E.I.R.L.), Sociedades de Responsabilidad Limitada (SRL o Ltda.), Sociedades por Acciones (SpA), Sociedades Anónimas (S.A.) y Sociedades Anónimas de Garantía Recíproca (S.A.G.R.).""",
             ]    
+            '''
 
+            
             vectordb = Chroma.from_texts(texts, embedding=embedding)
                         
 
