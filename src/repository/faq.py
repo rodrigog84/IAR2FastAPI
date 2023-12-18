@@ -27,6 +27,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain.llms import OpenAI
 from langchain.chains import RetrievalQA
+from langchain.chains import ConversationalRetrievalChain
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 
@@ -121,13 +122,14 @@ def send_message(messagedata: MessageApi):
         mensajes_previos = 0
         reclamo_ingresado = 0
         derivacion = 0
-
+        messages = []
         for row in mycursor.fetchall():
             # SI HUBO DERIVACION ENTONCES NO DEBE HABER RESPUESTA DEL BOT
             if row[10] == 'SI':
                 derivacion = 1
             else:
                 mensajes_previos = mensajes_previos + 1
+                messages.append((row[3], row[5]))
 
                 memory.save_context({"input": row[3]}, 
                                     {"output": row[5]})
@@ -135,7 +137,6 @@ def send_message(messagedata: MessageApi):
                 if row[9] == 'Reclamo Ingresado':
                     reclamo_ingresado = 1
 
-        memory.load_memory_variables({})
 
 
         ########################################################################################################
@@ -153,40 +154,14 @@ def send_message(messagedata: MessageApi):
         # tiene mensajes previos, pero no hay derivacion
         if mensajes_previos > 0 and derivacion == 0:
             
-
-            ############################################################################################################
-            ##   OBTENER PREGUNTAS FRECUENTES
-
-            mycursor.execute("""SELECT  question
-                                    , answer
-                            FROM    iar2_faq
-                            WHERE   identerprise = '%d' 
-                            ORDER BY id """ % (idempresa))            
-
-            texts = []
-            question = ""
-            for questions in mycursor.fetchall():
-                question = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
-                texts.append(question)
-
-            '''
-            texts = [
-                """¿Qué es el Registro de Empresas y Sociedades? El Registro de Empresas y Sociedades (RES) es un registro electrónico que dispone de un portal en Internet (www.RegistroDeEmpresasySociedades.cl), al cual deben incorporarse las personas jurídicas o empresas que deseen acogerse a la Ley N° 20.659, para los efectos de ser constituidas o migradas, modificadas, transformadas, fusionadas, divididas, terminadas o disueltas. El RES es un registro único y rige en todo el territorio de Chile. Es esencialmente público y está permanentemente actualizado a disposición de quien lo consulte en el sitio web, de manera que asegure la fiel y oportuna publicidad de la información incorporada en él. La información que conste en este Registro da plena fe de su autenticidad y cuenta con valor probatorio en contra de quienes han suscrito los formularios incorporados a este registro y sus empresas.""",
-                """¿Puedo constituir una empresa o sociedad si estoy en Dicom?. Sí, puedes constituir una empresa o sociedad. No es un impedimento estar en Dicom, aunque es posible que los bancos e instituciones financieras impongan restricciones a la hora de otorgar financiamiento.""",
-                """¿Qué tipos de empresas puedo constituir en el Registro de Empresas y Sociedades?. Por el momento, el registro comprende los siguientes tipos de empresas: Empresas Individuales de Responsabilidad Limitada (E.I.R.L.), Sociedades de Responsabilidad Limitada (SRL o Ltda.), Sociedades por Acciones (SpA), Sociedades Anónimas (S.A.) y Sociedades Anónimas de Garantía Recíproca (S.A.G.R.).""",
-            ]    
-            '''
-
-            
-            vectordb = Chroma.from_texts(texts, embedding=embedding)
-                        
-
             #ESCRIBIR LAS DISTINTAS PREGUNTAS 
             promp_original = promp1
 
             question = messagedata.message
+            memory.save_context({"input": question}, 
+                                {"output": ''})
+            memory.load_memory_variables({})
             
-
             second_prompt = ChatPromptTemplate.from_template(
                 "Indícame si en la siguiente pregunta el usuario indica de manera explícita que quiere derivar la conversación a un ejecutivo humano y terminar la conversación con el bot.  Tu respuesta debe ser SI o NO:"
                 "\n\n{human_input}"
@@ -204,26 +179,75 @@ def send_message(messagedata: MessageApi):
             else:
 
 
+
+                ############################################################################################################
+                ##   OBTENER PREGUNTAS FRECUENTES
+
+                mycursor.execute("""SELECT  question
+                                        , answer
+                                FROM    iar2_faq
+                                WHERE   identerprise = '%d' 
+                                ORDER BY id """ % (idempresa))            
+
+                texts = []
+                question_text = ""
+                for questions in mycursor.fetchall():
+                    question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
+                    texts.append(question_text)
+
+
+                vectordb = Chroma.from_texts(texts, embedding=embedding)
+
                 # Build prompt
-                template = promp1 + """Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
+                
+                '''
+                template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
+                {context}
+                
+                
+                {chat_history}
+                Question: {question}
+                Helpful Answer:"""
+
+                QA_CHAIN_PROMPT = PromptTemplate(
+                    input_variables=["context", "chat_history", "question"], template=template
+                )  
+                '''      
+
+                
+                template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
                 {context}
                 Question: {question}
                 Helpful Answer:"""
                 QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
+                
 
+                chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
                 # Run chain
+                #RetrievalQA.from_chain_type sirve para hacer solo la consulta
+                
                 qa_chain = RetrievalQA.from_chain_type(
                     llm,
                     retriever=vectordb.as_retriever(),
                     return_source_documents=True,
-                    chain_type_kwargs={"prompt": QA_CHAIN_PROMPT}
+                    chain_type_kwargs=chain_type_kwargs
                 )
-
-
-                question = messagedata.message
                 result = qa_chain({"query": question})
-
-                response = result["result"]
+                '''
+                qa_chain = ConversationalRetrievalChain.from_llm(
+                    llm=llm, 
+                    retriever=vectordb.as_retriever(),
+                    #memory=memory,
+                    #get_chat_history=lambda h:h,
+                    return_source_documents=False,
+                    combine_docs_chain_kwargs=chain_type_kwargs)             
+                '''
+                #result = qa_chain({"question": question})
+                #return result
+                #RESPUESTA = result['answer']
+                #PREGUNTA = result['question']
+                #HISTORIA = result['chat_history']
+                response = result['result']
 
                 response_is_claim = 'SI'
                 response_type_response = 'Interaccion'
@@ -264,6 +288,8 @@ def send_message(messagedata: MessageApi):
             #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
             mycursor.execute(sqlresponse)   
             miConexion.commit()
+
+            #return result
         else:
             responsecustomer = ''
 
