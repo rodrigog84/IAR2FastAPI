@@ -74,7 +74,7 @@ def limpiar_registro(messagedata: MessageApi, idempresa):
     return 'Limpieza Realizada'
 
 
-def greeting_message(messagedata: MessageApi, idempresa):
+def greeting_message(messagedata: MessageApi):
 
 
     #CONEXION
@@ -92,7 +92,7 @@ def greeting_message(messagedata: MessageApi, idempresa):
                                     , time_max
                                     , derivation
                                     , derivation_message
-                        FROM iar2_empresas WHERE empresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
     
     idempresa = 0
     promp1 = ''
@@ -131,7 +131,7 @@ def greeting_message(messagedata: MessageApi, idempresa):
 
 
 
-def derivation_option(messagedata: MessageApi, idempresa, id_interaction, idrow):
+def derivation_option(messagedata: MessageApi, id_interaction, idrow):
 
 
     #CONEXION
@@ -149,7 +149,7 @@ def derivation_option(messagedata: MessageApi, idempresa, id_interaction, idrow)
                                     , time_max
                                     , derivation
                                     , derivation_message
-                        FROM iar2_empresas WHERE empresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
     
     idempresa = 0
     promp1 = ''
@@ -186,7 +186,7 @@ def derivation_option(messagedata: MessageApi, idempresa, id_interaction, idrow)
     miConexion.commit()
     return responsecustomer
 
-def chatbot_message(messagedata: MessageApi, idempresa, id_interaction, idrow, promp1):
+def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     llm_name = "gpt-3.5-turbo"   
     llm = ChatOpenAI(model_name=llm_name, temperature=0) 
@@ -293,7 +293,7 @@ def send_message(messagedata: MessageApi):
                                     , time_max
                                     , derivation
                                     , derivation_message
-                        FROM iar2_empresas WHERE empresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''
@@ -341,7 +341,7 @@ def send_message(messagedata: MessageApi):
 
     ## CASO 2: INTERACCION NUEVA - SALUDO
     if tiene_mensaje == 0:
-        responsecustomer = greeting_message(messagedata, idempresa)
+        responsecustomer = greeting_message(messagedata)
         return responsecustomer
     
 
@@ -385,13 +385,13 @@ def send_message(messagedata: MessageApi):
 
     ## CASO 4: CLIENTE PIDE AHORA DERIVACION
     if response_derivacion == 'SI':
-        responsecustomer = derivation_option(messagedata, idempresa, id_interaction, idrow)
+        responsecustomer = derivation_option(messagedata, id_interaction, idrow)
         return responsecustomer
 
 
 
     ## CASO 5: COMUNICACION CON CHATBOT
-    responsecustomer = chatbot_message(messagedata, idempresa, id_interaction, idrow,  promp1)
+    responsecustomer = chatbot_message(messagedata, id_interaction, idrow,  promp1)
 
     return responsecustomer
 
@@ -404,7 +404,7 @@ def get_messages(enterprise: str):
 
 
     #BUSCA LA EMPRESA
-    mycursor.execute("SELECT id, empresa, promp1 FROM iar2_empresas WHERE empresa = '%s'" % (enterprise))
+    mycursor.execute("SELECT id, empresa, promp1 FROM iar2_empresas WHERE codempresa = '%s'" % (enterprise))
 
     idempresa = 0
     promp1 = ''
@@ -475,6 +475,7 @@ def finish_message():
                             WHERE 	    typemessage = '%s' 
                             AND 	    valuetype = '%s' 
                             AND         identerprise = %d""" % (typemessage,valuetype,identerprise))
+
         for row_register in mycursor2.fetchall():
                 messageresponsecustomer = row_register[0]
                 typeresponse = row_register[1]
@@ -490,7 +491,7 @@ def finish_message():
                 mycursor3 = miConexion.cursor()
 
                 # SI ULTIMO MENSAJE FUE DEL CHATBOT, ES DE WHATSAPP, ES DE INTERACCION O SALUDO Y FUE HACE MÁS DE 30 MINUTOS, ENVIAR MENSAJE DE ALERTA DE CIERRE
-                if typemessage == 'Whatsapp' and messageresponsecustomer != '' and (typeresponse == 'Interaccion' or typeresponse == 'Saludo') and minutos > apiwsclosealertminutes:
+                if typemessage == 'Whatsapp' and messageresponsecustomer != '' and typeresponse != 'Alerta Cierre' and minutos > apiwsclosealertminutes:
                     
                     #response = requests.get(url)
                     

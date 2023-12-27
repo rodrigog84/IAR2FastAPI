@@ -50,3 +50,11 @@ ALTER TABLE `iar2_captura`
 
 ALTER TABLE `iar2_interaction`
 	ADD COLUMN `alert_finish` TINYINT(4) NOT NULL DEFAULT '0' AFTER `derivation`;    
+
+/**********************************************************************************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `codempresa` VARCHAR(100) NOT NULL DEFAULT '0' AFTER `id`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `departamento` VARCHAR(50) NULL DEFAULT NULL AFTER `empresa`;    
