@@ -309,6 +309,8 @@ def send_message(messagedata: MessageApi):
         derivation_message = row_empresa[9]
 
 
+    if idempresa == 0:
+        return 'Empresa no existe'
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
