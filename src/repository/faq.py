@@ -52,7 +52,273 @@ import tiktoken
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 
+def limpiar_registro(messagedata: MessageApi, idempresa):
 
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()        
+    mycursor.execute("""DELETE     
+                        FROM       iar2_captura 
+                        WHERE      typemessage = '%s' 
+                        AND        valuetype = '%s' 
+                        AND        identerprise = '%d' 
+                        AND        created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
+    
+    miConexion.commit()
+
+    mycursor.execute("""DELETE     
+                        FROM       iar2_interaction 
+                        WHERE      typemessage = '%s' 
+                        AND        valuetype = '%s' 
+                        AND        identerprise = '%d' 
+                        AND        updated_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
+
+    miConexion.commit()
+    return 'Limpieza Realizada'
+
+
+
+def greeting_message(messagedata: MessageApi):
+
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+    
+    idempresa = 0
+    promp1 = ''
+    for row_empresa in mycursor.fetchall():
+        idempresa = row_empresa[0]
+        promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]
+
+
+    if greeting is None:
+        responsecustomer = 'Hola! soy el asistente virtual del servicio de Preguntas Frecuentes Iars2!.😎. Soy un asistente creado con Inteligencia Artificial preparado para atender a tus necesidades. Puedes indicar tu situación, y gestionaremos correctamente para dar una respuesta oportuna.  Para comenzar, favor indícame tu nombre'
+    else:
+        responsecustomer = greeting
+    
+    sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse) VALUES (%s, %s, %s, %s, %s, %s)"
+    val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), 'Saludo')
+    mycursor.execute(sql, val)   
+    miConexion.commit()
+
+    idinteraction = mycursor.lastrowid
+    idinteractionstr = str(idinteraction)        
+
+    # GUARDADO MENSAJE ENTRANTE
+    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, messageresponseia, messageresponsecustomer, typeresponse, identerprise,idinteraction) VALUES (%s, %s, %s, %s, %s, 'Saludo', %s, %s)"
+    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), sqlescape(responsecustomer), idempresa, idinteractionstr)
+    mycursor.execute(sql, val)   
+    miConexion.commit()   
+    return responsecustomer
+
+
+def derivation_option(messagedata: MessageApi, id_interaction, idrow):
+
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+    
+    idempresa = 0
+    promp1 = ''
+    for row_empresa in mycursor.fetchall():
+        idempresa = row_empresa[0]
+        promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]    
+    
+    response_type_response = 'Derivacion'
+    response = ''
+
+    if tiene_derivacion == 1:
+        if derivation_message is None:
+            responsecustomer = 'Para proporcionarte una asistencia más detallada y personalizada, voy a derivar tu solicitud a uno de nuestros ejecutivos. Estarán en contacto contigo en breve para abordar tus inquietudes de manera más directa.'
+        else:
+            responsecustomer = derivation_message   
+    else:
+        responsecustomer = 'Como su asistente virtual, me encargaré de responder a sus necesidades.'
+     
+
+    sqlresponse =  "UPDATE iar2_captura SET messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s',  derivacion = '%s', idinteraction = '%d'  WHERE id = %d" % (sqlescape(responsecustomer), sqlescape(responsecustomer), 'Derivacion', 'SI', id_interaction, idrow)
+    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
+    mycursor.execute(sqlresponse)   
+    miConexion.commit()
+    sqlresponse =  "UPDATE iar2_interaction SET typemessage = '%s', derivation = 1, lastmessage =  '%s', lastmessageresponsecustomer =  '%s', lastyperesponse =  '%s' WHERE id = %d" % ( messagedata.typemessage, sqlescape(messagedata.message), sqlescape(responsecustomer), 'Derivacion', id_interaction)
+    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
+    mycursor.execute(sqlresponse)   
+    miConexion.commit()
+    return responsecustomer
+
+
+def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
+
+    llm_name = "gpt-3.5-turbo"   
+    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    memory = ConversationBufferMemory(memory_key="chat_history")
+    embedding = OpenAIEmbeddings()
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+    
+    idempresa = 0
+    promp1 = ''
+    for row_empresa in mycursor.fetchall():
+        idempresa = row_empresa[0]
+        promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]    
+    
+
+    #EVALUA LOS MENSAJES EXISTENTES DE LA INTERACCION ACTUAL
+    mycursor.execute("""SELECT      identification
+                                    , typemessage
+                                    , valuetype
+                                    , message
+                                    , messageresponseia
+                                    , messageresponsecustomer
+                                    , classification
+                                    , sla
+                                    , isclaim
+                                    , typeresponse
+                                    , derivacion 
+                        FROM        iar2_captura 
+                        WHERE       idinteraction = '%s' 
+                        ORDER BY    created_at """ % (id_interaction))
+
+    mensajes_previos = 0
+    reclamo_ingresado = 0
+    derivacion = 0
+    messages = []
+
+    for row in mycursor.fetchall():
+
+        mensajes_previos = mensajes_previos + 1
+        messages.append((row[3], row[5]))
+
+        memory.save_context({"input": row[3]}, 
+                            {"output": row[5]})
+                
+ 
+    #memory.load_memory_variables({})        
+
+    #ESCRIBIR LAS DISTINTAS PREGUNTAS
+     
+    question = messagedata.message 
+    promp_original = promp1
+    memory.save_context({"input": question}, 
+                        {"output": ''})
+    memory.load_memory_variables({})
+
+    ############################################################################################################
+    ##   OBTENER PREGUNTAS FRECUENTES
+
+    mycursor.execute("""SELECT  question
+                            , answer
+                    FROM    iar2_faq
+                    WHERE   identerprise = '%d' 
+                    ORDER BY id """ % (idempresa))            
+
+
+    texts = []
+    question_text = ""
+    for questions in mycursor.fetchall():
+        question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
+        texts.append(question_text)
+
+    vectordb = Chroma.from_texts(texts, embedding=embedding)
+
+    template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
+    {context}
+    Question: {question}
+    Helpful Answer:"""
+    QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
+    
+
+    chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
+    # Run chain
+    #RetrievalQA.from_chain_type sirve para hacer solo la consulta
+    
+    qa_chain = RetrievalQA.from_chain_type(
+        llm,
+        retriever=vectordb.as_retriever(),
+        return_source_documents=True,
+        chain_type_kwargs=chain_type_kwargs
+    )
+    result = qa_chain({"query": question})    
+    response = result['result']
+    typeresponse = 'Interaccion'
+    responsecustomer = response
+
+    # response = ''
+    # GUARDADO RESPUESTA
+    sqlresponse =  "UPDATE iar2_captura SET identification = '', messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s', derivacion = '%s', idinteraction = '%d'  WHERE id = %d" % (sqlescape(response), sqlescape(responsecustomer), typeresponse, 'NO', id_interaction, idrow)
+    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
+    mycursor.execute(sqlresponse)   
+    miConexion.commit()
+
+    sqlresponse =  "UPDATE iar2_interaction SET  lastmessage =  '%s', lastmessageresponsecustomer =  '%s', lastyperesponse =  '%s' WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, id_interaction)
+    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
+    mycursor.execute(sqlresponse)   
+    miConexion.commit()    
+
+    return responsecustomer
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 def send_message(messagedata: MessageApi):
@@ -70,231 +336,116 @@ def send_message(messagedata: MessageApi):
 
 
     #BUSCA LA EMPRESA
-    mycursor.execute("SELECT id, empresa, promp1 FROM iar2_empresas WHERE empresa = '%s'" % (messagedata.enterprise))
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''
     for row_empresa in mycursor.fetchall():
         idempresa = row_empresa[0]
         promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]
+
 
 
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
 
-
+    ## CASO 1: LIMPIEZA REGISTRO
     if messagedata.message == 'Limpiar registro':
-         mycursor.execute("DELETE FROM iar2_captura WHERE typemessage = '%s' AND valuetype = '%s' AND identerprise = '%d' AND created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()" % (messagedata.typemessage,messagedata.valuetype,idempresa))
-         miConexion.commit()
-         responsecustomer = 'Limpieza Realizada'
          
-    else:
-        #EVALUA LOS MENSAJES EXISTENTES EN LA ÚLTIMA HORA
-        #CONSIDERA TODOS LOS MENSAJES POSTERIORES A UN CIERRE (POR SI TIENE UN CIERRE ANTERIOR EN LA ULTIMA HORA, Y NO CONSIDERA LA ALERTA DE CIERRE EN LA INTERACCION)
-        mycursor.execute("""SELECT  identification
-                                    , typemessage
-                                    , valuetype
-                                    , message
-                                    , messageresponseia
-                                    , messageresponsecustomer
-                                    , classification
-                                    , sla
-                                    , isclaim
-                                    , typeresponse
-                                    , derivacion 
-                            FROM    iar2_captura 
-                            WHERE   typemessage = '%s' 
-                            AND     valuetype = '%s' 
-                            AND     identerprise = '%d' 
-                            AND     typeresponse != 'Alerta Cierre' 
-                            AND     created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW() 
-                            AND     id > (
-                                            SELECT      ifnull(MAX(id),0) AS id 
-                                            FROM        iar2_captura 
-                                            WHERE       typemessage = '%s' 
-                                            AND         valuetype = '%s' 
-                                            AND         identerprise = '%d' 
-                                            AND 	    typeresponse = 'Cierre Conversación'
-                                         ) 
-                            ORDER BY    created_at """ % (messagedata.typemessage,messagedata.valuetype,idempresa,messagedata.typemessage,messagedata.valuetype,idempresa))
+         resp = limpiar_registro(messagedata, idempresa)
 
-        mensajes_previos = 0
-        reclamo_ingresado = 0
-        derivacion = 0
-        messages = []
-        for row in mycursor.fetchall():
-            # SI HUBO DERIVACION ENTONCES NO DEBE HABER RESPUESTA DEL BOT
-            if row[10] == 'SI':
-                derivacion = 1
-            else:
-                mensajes_previos = mensajes_previos + 1
-                messages.append((row[3], row[5]))
+         return resp
+ 
+    #OBTIENE DATOS PRINCIPALES INTERACCION
+    mycursor.execute("""SELECT      id
+                                    ,derivation
+                        FROM        iar2_interaction 
+                        WHERE       typemessage = '%s' 
+                        AND         valuetype = '%s' 
+                        AND         identerprise = '%d' 
+                        AND         finish = 0
+                        ORDER BY    updated_at DESC
+                        LIMIT 1""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
 
-                memory.save_context({"input": row[3]}, 
-                                    {"output": row[5]})
-
-                if row[9] == 'Reclamo Ingresado':
-                    reclamo_ingresado = 1
+    tiene_mensaje = 0
+    for row_interaction in mycursor.fetchall():
+        tiene_mensaje = 1
+        id_interaction = row_interaction[0]
+        derivation = row_interaction[1]
 
 
+    ## CASO 2: INTERACCION NUEVA - SALUDO
+    if tiene_mensaje == 0:
+        responsecustomer = greeting_message(messagedata)
+        return responsecustomer
 
-        ########################################################################################################
 
-        # GUARDADO MENSAJE ENTRANTE
-        sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise) VALUES (%s, %s, %s, %s)"
-        val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), idempresa)
-        mycursor.execute(sql, val)   
-        miConexion.commit()
+    
 
-        idrow = mycursor.lastrowid
-        idrowstr = str(idrow)
+    ## CASO 3: DERIVACION
+    if derivation == 1:
+        derivation = 1 # VER QUE HACER ACA
 
-        #mensajes_previos = 1
-        # tiene mensajes previos, pero no hay derivacion
-        if mensajes_previos > 0 and derivacion == 0:
-            
-            #ESCRIBIR LAS DISTINTAS PREGUNTAS 
-            promp_original = promp1
+        if tiene_derivacion == 1:
+            return ''
+        
+    ########################################################################################################
 
-            question = messagedata.message
-            memory.save_context({"input": question}, 
-                                {"output": ''})
-            memory.load_memory_variables({})
-            
-            second_prompt = ChatPromptTemplate.from_template(
-                "Indícame si en la siguiente pregunta el usuario indica de manera explícita que quiere derivar la conversación a un ejecutivo humano y terminar la conversación con el bot.  Tu respuesta debe ser SI o NO:"
-                "\n\n{human_input}"
-            )
-            # chain 2: input= English_Review and output= summary
-            chain_two = LLMChain(llm=llm, prompt=second_prompt,
-                                output_key="intencion_derivacion"
-                                )
+    # GUARDADO MENSAJE ENTRANTE
+    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise) VALUES (%s, %s, %s, %s)"
+    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), idempresa)
+    mycursor.execute(sql, val)   
+    miConexion.commit()
 
-            response_derivacion = chain_two.predict(human_input=question)
-            if response_derivacion == 'SI':
-                response_type_response = 'Derivacion'
-                response = ''
-                response_is_claim = 'SI'
-            else:
+    idrow = mycursor.lastrowid
+    idrowstr = str(idrow)
+
+    
+    question = messagedata.message
+
+    derivation_prompt = ChatPromptTemplate.from_template(
+        "Indícame si en la siguiente pregunta el usuario indica de manera explícita que quiere derivar la conversación a un ejecutivo humano y terminar la conversación con el bot.  Tu respuesta debe ser SI o NO:"
+        "\n\n{human_input}"
+    )
+    # chain 2: input= English_Review and output= summary
+    chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
+                        output_key="intencion_derivacion"
+                        )
+    
+
+    response_derivacion = chain_derivarion.predict(human_input=question)
+
+
+    ## CASO 4: CLIENTE PIDE AHORA DERIVACION
+    if response_derivacion == 'SI':
+        responsecustomer = derivation_option(messagedata, id_interaction, idrow)
+        return responsecustomer
 
 
 
-                ############################################################################################################
-                ##   OBTENER PREGUNTAS FRECUENTES
+    ## CASO 5: COMUNICACION CON CHATBOT
+    responsecustomer = chatbot_message(messagedata, id_interaction, idrow,  promp1)
 
-                mycursor.execute("""SELECT  question
-                                        , answer
-                                FROM    iar2_faq
-                                WHERE   identerprise = '%d' 
-                                ORDER BY id """ % (idempresa))            
-
-                texts = []
-                question_text = ""
-                for questions in mycursor.fetchall():
-                    question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
-                    texts.append(question_text)
-
-
-                vectordb = Chroma.from_texts(texts, embedding=embedding)
-
-                # Build prompt
-                
-                '''
-                template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
-                {context}
-                
-                
-                {chat_history}
-                Question: {question}
-                Helpful Answer:"""
-
-                QA_CHAIN_PROMPT = PromptTemplate(
-                    input_variables=["context", "chat_history", "question"], template=template
-                )  
-                '''      
-
-                
-                template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
-                {context}
-                Question: {question}
-                Helpful Answer:"""
-                QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
-                
-
-                chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
-                # Run chain
-                #RetrievalQA.from_chain_type sirve para hacer solo la consulta
-                
-                qa_chain = RetrievalQA.from_chain_type(
-                    llm,
-                    retriever=vectordb.as_retriever(),
-                    return_source_documents=True,
-                    chain_type_kwargs=chain_type_kwargs
-                )
-                result = qa_chain({"query": question})
-                '''
-                qa_chain = ConversationalRetrievalChain.from_llm(
-                    llm=llm, 
-                    retriever=vectordb.as_retriever(),
-                    #memory=memory,
-                    #get_chat_history=lambda h:h,
-                    return_source_documents=False,
-                    combine_docs_chain_kwargs=chain_type_kwargs)             
-                '''
-                #result = qa_chain({"question": question})
-                #return result
-                #RESPUESTA = result['answer']
-                #PREGUNTA = result['question']
-                #HISTORIA = result['chat_history']
-                response = result['result']
-
-                response_is_claim = 'SI'
-                response_type_response = 'Interaccion'
-             
-        else:
-            response = 'Sin Respuesta'
-            response_is_claim = ''
-            response_derivacion = ''
-            response_type_response = ''
-
-
-        if derivacion == 0:
-            classification = "Área de Ventas"
-            derivacion = "Área de Ventas"
-            sla = "48 Horas"
-            isclaim = response_is_claim
-            today = date.today()
-            identification = "R-" + today.strftime("%y%m%d"+str(idrowstr.zfill(4)))
-
-            if response == 'Sin Respuesta':
-                responsecustomer = 'Hola! soy el asistente virtual del servicio de Preguntas Frecuentes Iars2!.😎. Soy un asistente creado con Inteligencia Artificial preparado para atender a tus necesidades. Puedes indicar tu situación, y gestionaremos correctamente para dar una respuesta oportuna.  Para comenzar, favor indícame tu nombre'
-                typeresponse = 'Saludo'
-            else:
-
-                if response_derivacion == 'SI':
-                    responsecustomer = 'Para proporcionarte una asistencia más detallada y personalizada, voy a derivar tu solicitud a uno de nuestros ejecutivos. Estarán en contacto contigo en breve para abordar tus inquietudes de manera más directa.'
-                    typeresponse = 'Derivacion'
-                else:
-                    #responsecustomer = "Su reclamo identificado como " + identification + " ha sido generado con éxito.  Su solicitud fue derivada al " + classification + ", y será resuelta en un plazo máximo de " + sla + "."
-                    responsecustomerfinal = "Su reclamo está identificado por el siguiente código: " + identification + "."
-                    typeresponse = response_type_response
-
-                    responsecustomer = response
-
-        # response = ''
-            # GUARDADO RESPUESTA
-            sqlresponse =  "UPDATE iar2_captura SET identification = '%s', messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s', classification ='%s', sla = '%s', isclaim = '%s', derivacion = '%s'  WHERE id = %d" % (identification, sqlescape(response), sqlescape(responsecustomer), typeresponse, classification, sla, isclaim, response_derivacion, idrow)
-            #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
-            mycursor.execute(sqlresponse)   
-            miConexion.commit()
-
-            #return result
-        else:
-            responsecustomer = ''
-
-    #return {'respuesta': promp1}
     return responsecustomer
+
 
 def get_messages(enterprise: str):
 

@@ -436,11 +436,13 @@ def finish_message():
 
 
     #BUSCA LA EMPRESA
-    mycursor.execute("""SELECT      DISTINCT typemessage
-                                    , valuetype
-                                    , identerprise 
-                        FROM        iar2_interaction 
-                        WHERE       finish = 0""")
+    mycursor.execute("""SELECT      DISTINCT i.typemessage
+                                    , i.valuetype
+                                    , i.identerprise 
+                        FROM        iar2_interaction i
+                        INNER JOIN  iar2_empresas e on i.identerprise = e.id 
+                        WHERE       i.finish = 0
+                        AND         e.typechatbot = 'Reclamos'""")
     #mycursor.execute("SELECT DISTINCT typemessage, valuetype, identerprise FROM iar2_captura WHERE created_at BETWEEN DATE_ADD(NOW(), INTERVAL -3 DAY) AND NOW()")
 
     typemessage = ''
