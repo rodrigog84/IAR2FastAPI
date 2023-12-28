@@ -80,6 +80,70 @@ def limpiar_registro(messagedata: MessageApi, idempresa):
     return 'Limpieza Realizada'
 
 
+
+def out_time_message(messagedata: MessageApi):
+
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                                    , chatbot
+                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+    
+    idempresa = 0
+    promp1 = ''
+    for row_empresa in mycursor.fetchall():
+        idempresa = row_empresa[0]
+        promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]
+        chatbot = row_empresa[10]
+
+
+    if chatbot == 0:
+        derivation = 1
+        derivacion = 'SI'
+    else:
+        derivation = 0
+        derivacion = 'NO'
+
+    responsecustomer = f'Hola! Nuestro horario de atencion es entre las {time_min} y las {time_max}.  Disculpe las molestias'
+    
+    sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation,alert_finish, finish) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), 'Saludo',derivation, 1, 1)
+    mycursor.execute(sql, val)   
+    miConexion.commit()
+
+    idinteraction = mycursor.lastrowid
+    idinteractionstr = str(idinteraction)        
+
+    # GUARDADO MENSAJE ENTRANTE
+    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, messageresponseia, messageresponsecustomer, typeresponse, identerprise,idinteraction, derivacion) VALUES (%s, %s, %s, %s, %s, 'Fuera de Horario', %s, %s, %s)"
+    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), sqlescape(responsecustomer), idempresa, idinteractionstr, derivacion)
+    mycursor.execute(sql, val)   
+    miConexion.commit()   
+    return responsecustomer 
+
+
+
+
 def greeting_message(messagedata: MessageApi):
 
 
@@ -306,6 +370,12 @@ def send_message(messagedata: MessageApi):
                                     , time_max
                                     , derivation
                                     , derivation_message
+                                    , CASE WHEN time (NOW()) < time_min THEN 1
+                                    		 ELSE 0
+                                      END AS fuera_time_min
+                                    , CASE WHEN time (NOW()) > time_max THEN 1
+                                    		 ELSE 0
+                                      END fuera_time_max                     
                         FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
@@ -320,6 +390,9 @@ def send_message(messagedata: MessageApi):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]
+        fuera_time_min = row_empresa[10]
+        fuera_time_max = row_empresa[11]
+
 
     #VALIDACION DE EMPRESA
     if idempresa == 0:
@@ -330,6 +403,8 @@ def send_message(messagedata: MessageApi):
         return 'Canal no permitido'
     if messagedata.typemessage == 'Webchat' and webchat == 0:
         return 'Canal no permitido'
+    
+
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
@@ -362,7 +437,12 @@ def send_message(messagedata: MessageApi):
 
     ## CASO 2: INTERACCION NUEVA - SALUDO
     if tiene_mensaje == 0:
-        responsecustomer = greeting_message(messagedata)
+
+        if fuera_time_min == 1 or fuera_time_max == 1:
+            responsecustomer = out_time_message(messagedata)
+        else:
+            responsecustomer = greeting_message(messagedata)
+            
         return responsecustomer
     
 
