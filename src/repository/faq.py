@@ -62,6 +62,11 @@ def limpiar_registro(messagedata: MessageApi, idempresa):
                         WHERE      typemessage = '%s' 
                         AND        valuetype = '%s' 
                         AND        identerprise = '%d' 
+                        AND        idinteraction in (
+                                                     SELECT     id
+                                                     FROM       iar2_interaction
+                                                     WHERE      finish = 0
+                                                    )
                         AND        created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
     
     miConexion.commit()
@@ -71,10 +76,12 @@ def limpiar_registro(messagedata: MessageApi, idempresa):
                         WHERE      typemessage = '%s' 
                         AND        valuetype = '%s' 
                         AND        identerprise = '%d' 
+                        AND        finish = 0
                         AND        updated_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
 
     miConexion.commit()
     return 'Limpieza Realizada'
+
 
 
 
@@ -96,6 +103,7 @@ def greeting_message(messagedata: MessageApi):
                                     , time_max
                                     , derivation
                                     , derivation_message
+                                    , chatbot
                         FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
     
     idempresa = 0
@@ -110,15 +118,23 @@ def greeting_message(messagedata: MessageApi):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]
+        chatbot = row_empresa[10]
 
+
+    if chatbot == 0:
+        derivation = 1
+        derivacion = 'SI'
+    else:
+        derivation = 0
+        derivacion = 'NO'
 
     if greeting is None:
         responsecustomer = 'Hola! soy el asistente virtual del servicio de Preguntas Frecuentes Iars2!.😎. Soy un asistente creado con Inteligencia Artificial preparado para atender a tus necesidades. Puedes indicar tu situación, y gestionaremos correctamente para dar una respuesta oportuna.  Para comenzar, favor indícame tu nombre'
     else:
         responsecustomer = greeting
     
-    sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse) VALUES (%s, %s, %s, %s, %s, %s)"
-    val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), 'Saludo')
+    sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), 'Saludo',derivation)
     mycursor.execute(sql, val)   
     miConexion.commit()
 
@@ -126,8 +142,8 @@ def greeting_message(messagedata: MessageApi):
     idinteractionstr = str(idinteraction)        
 
     # GUARDADO MENSAJE ENTRANTE
-    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, messageresponseia, messageresponsecustomer, typeresponse, identerprise,idinteraction) VALUES (%s, %s, %s, %s, %s, 'Saludo', %s, %s)"
-    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), sqlescape(responsecustomer), idempresa, idinteractionstr)
+    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, messageresponseia, messageresponsecustomer, typeresponse, identerprise,idinteraction, derivacion) VALUES (%s, %s, %s, %s, %s, 'Saludo', %s, %s, %s)"
+    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), sqlescape(responsecustomer), sqlescape(responsecustomer), idempresa, idinteractionstr, derivacion)
     mycursor.execute(sql, val)   
     miConexion.commit()   
     return responsecustomer
@@ -346,6 +362,7 @@ def send_message(messagedata: MessageApi):
                                     , time_max
                                     , derivation
                                     , derivation_message
+                                    , chatbot
                         FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
@@ -360,15 +377,23 @@ def send_message(messagedata: MessageApi):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]
+        chatbot = row_empresa[10]
 
 
+    #VALIDACION DE EMPRESA
     if idempresa == 0:
         return 'Empresa no existe'
+    
+    #VALIDACION DE CANAL
+    if messagedata.typemessage == 'Whatsapp' and whatsapp == 0:
+        return 'Canal no permitido'
+    if messagedata.typemessage == 'Webchat' and webchat == 0:
+        return 'Canal no permitido'    
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
 
-    ## CASO 1: LIMPIEZA REGISTRO
+    ## CASO 1: LIMPIEZA REGISTRO    
     if messagedata.message == 'Limpiar registro':
          
          resp = limpiar_registro(messagedata, idempresa)
@@ -398,8 +423,15 @@ def send_message(messagedata: MessageApi):
         responsecustomer = greeting_message(messagedata)
         return responsecustomer
 
+    # GUARDADO MENSAJE ENTRANTE
+    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise, idinteraction) VALUES (%s, %s, %s, %s, %s)"
+    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), idempresa, id_interaction)
+    mycursor.execute(sql, val)   
+    miConexion.commit()
 
-    
+    idrow = mycursor.lastrowid
+    idrowstr = str(idrow)
+
 
     ## CASO 3: DERIVACION
     if derivation == 1:
@@ -407,18 +439,8 @@ def send_message(messagedata: MessageApi):
 
         if tiene_derivacion == 1:
             return ''
-        
+     
     ########################################################################################################
-
-    # GUARDADO MENSAJE ENTRANTE
-    sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise) VALUES (%s, %s, %s, %s)"
-    val = (messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), idempresa)
-    mycursor.execute(sql, val)   
-    miConexion.commit()
-
-    idrow = mycursor.lastrowid
-    idrowstr = str(idrow)
-
     
     question = messagedata.message
 
