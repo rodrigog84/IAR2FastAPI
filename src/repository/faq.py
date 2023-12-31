@@ -559,7 +559,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
     mycursor.execute(sqlresponse)   
     miConexion.commit()    
-    return result
+    #return result
     return responsecustomer
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
@@ -747,7 +747,13 @@ def finish_message():
 
 
     #BUSCA LA EMPRESA
-    mycursor.execute("SELECT DISTINCT typemessage, valuetype, identerprise FROM iar2_captura WHERE created_at BETWEEN DATE_ADD(NOW(), INTERVAL -1 HOUR) AND NOW()")
+    mycursor.execute("""SELECT      DISTINCT i.typemessage
+                                    , i.valuetype
+                                    , i.identerprise 
+                        FROM        iar2_interaction i
+                        INNER JOIN  iar2_empresas e on i.identerprise = e.id 
+                        WHERE       i.finish = 0
+                        AND         e.typechatbot = 'FAQ'""")
     #mycursor.execute("SELECT DISTINCT typemessage, valuetype, identerprise FROM iar2_captura WHERE created_at BETWEEN DATE_ADD(NOW(), INTERVAL -3 DAY) AND NOW()")
 
     typemessage = ''
@@ -760,29 +766,30 @@ def finish_message():
     reclamos = []
     registro = []
     for row_interaction in mycursor.fetchall():
+
         typemessage = row_interaction[0]
         valuetype = row_interaction[1]
         identerprise = row_interaction[2]
+
         content = {"typemessage":typemessage,"valuetype":valuetype,"identerprise":identerprise}
         reclamos.append(content)
         mycursor2 = miConexion.cursor()
         
         #OBTIENE EL ÚLTIMO MENSAJE DEL NUMERO QUE SE ESTÁ COMUNICANDO
-        mycursor2.execute("""SELECT 	c.messageresponsecustomer 
-                                        ,c.typeresponse
-                                        ,TIMESTAMPDIFF(MINUTE,c.created_at,NOW()) AS minutos 
+        mycursor2.execute("""SELECT 	c.lastmessageresponsecustomer as messageresponsecustomer 
+                                        ,c.lastyperesponse as typeresponse
+                                        ,TIMESTAMPDIFF(MINUTE,c.updated_at,NOW()) AS minutos 
                                         ,e.port
                                         ,e.closealertminutes
                                         ,e.closeminutes
-                            FROM        iar2_captura c  
+                                        ,c.id as idinteracion
+                            FROM        iar2_interaction c  
                             INNER JOIN  iar2_empresas e  on c.identerprise = e.id
-                            WHERE 	c.id = (
-                                                                SELECT   MAX(id) 
-                                                                FROM    iar2_captura c 
-                                                                WHERE 	typemessage = '%s' 
-                                                                AND 	valuetype = '%s' 
-                                                                AND     identerprise = %d
-                                                                )""" % (typemessage,valuetype,identerprise))
+                            WHERE 	    finish = 0
+                            AND         typemessage = '%s' 
+                            AND 	    valuetype = '%s' 
+                            AND         identerprise = %d""" % (typemessage,valuetype,identerprise))
+
         for row_register in mycursor2.fetchall():
                 messageresponsecustomer = row_register[0]
                 typeresponse = row_register[1]
@@ -790,11 +797,15 @@ def finish_message():
                 apiwsport = row_register[3]
                 apiwsclosealertminutes = row_register[4]
                 apiwscloseminutes = row_register[5]
+                id_interaction = row_register[6]
+                
                 
                 url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
+
                 mycursor3 = miConexion.cursor()
+
                 # SI ULTIMO MENSAJE FUE DEL CHATBOT, ES DE WHATSAPP, ES DE INTERACCION O SALUDO Y FUE HACE MÁS DE 30 MINUTOS, ENVIAR MENSAJE DE ALERTA DE CIERRE
-                if typemessage == 'Whatsapp' and messageresponsecustomer != '' and (typeresponse == 'Interaccion' or typeresponse == 'Saludo') and minutos > apiwsclosealertminutes:
+                if typemessage == 'Whatsapp' and messageresponsecustomer != '' and typeresponse != 'Alerta Cierre' and minutos > apiwsclosealertminutes:
                     
                     #response = requests.get(url)
                     
@@ -805,22 +816,26 @@ def finish_message():
                     headers = {
                     'Content-Type': 'application/json'
                     }
-                    
+
+
                     response = requests.request("POST", url, headers=headers, data=payload)                    
 
-
+                    
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
                     val = (typemessage, valuetype, 'Alerta de cierre de sesion', 'Alerta Cierre', identerprise)
                     mycursor3.execute(sql, val)   
                     miConexion.commit()
 
+                    sqlresponse =  "UPDATE iar2_interaction SET  lastmessage =  '', lastmessageresponsecustomer =  'Alerta de cierre de sesion', lastyperesponse =  'Alerta Cierre', alert_finish = 1 WHERE id = %d" % (id_interaction)
+                    mycursor3.execute(sqlresponse)   
+                    miConexion.commit()    
 
                 # SI ULTIMO MENSAJE FUE DE ALERTA DE CIERRE Y DE WHATSAPP, ENVIAR MENSAJE DE CIERRE
                 if typemessage == 'Whatsapp' and typeresponse == 'Alerta Cierre' and minutos > apiwscloseminutes:
                     #url = f'http://' + apiwshost + ':' + apiwsport + '/api/CallBack?p=' + valuetype + '&q=2'
                     #response = requests.get(url)
 
-
+                    
                     payload = json.dumps({
                         "message": message_cierre,
                         "phone": valuetype
@@ -836,6 +851,9 @@ def finish_message():
                     mycursor3.execute(sql, val)   
                     miConexion.commit()
 
+                    sqlresponse =  "UPDATE iar2_interaction SET  lastmessage =  '', lastmessageresponsecustomer =  'Cierre de sesion definitivo', lastyperesponse =  'Cierre Conversación', finish = 1 WHERE id = %d" % (id_interaction)
+                    mycursor3.execute(sqlresponse)   
+                    miConexion.commit()    
 
                 content2 = {"messageresponsecustomer":messageresponsecustomer,"typeresponse":typeresponse,"minutos":minutos,"url": url}    
                 registro.append(content2)

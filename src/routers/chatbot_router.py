@@ -66,6 +66,7 @@ def get_messages(enterprise: str,solution: str):
 @chatbot_router.get('/finish_message/')
 def finish_message():
     message = claim.finish_message()
+    message = faq.finish_message()
     return {'data' : message}
 
 
