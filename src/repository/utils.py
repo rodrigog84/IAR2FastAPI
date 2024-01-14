@@ -10,6 +10,9 @@ from config.mysql_conection import dbMysql
 
 #data conection Wsapi
 from config.apiws import apiwshost
+from config.apiws import apiwsapiversion
+
+
 #from config.apiws import apiwsport
 #from config.apiws import apiwsclosealertminutes
 #from config.apiws import apiwscloseminutes
@@ -59,12 +62,14 @@ def send_message_back_Ws(messagedata: MessageApi):
     mycursor = miConexion.cursor()
 
     #BUSCA LA EMPRESA
-    mycursor.execute("SELECT id, empresa, promp1, port FROM iar2_empresas WHERE codempresa = '%s'" % (messagedata.enterprise))
+    mycursor.execute("SELECT id, empresa, promp1, port, numberidwsapi, jwtokenwsapi FROM iar2_empresas WHERE codempresa = '%s'" % (messagedata.enterprise))
 
     idempresa = 0
     for row_empresa in mycursor.fetchall():
         idempresa = row_empresa[0]
         apiwsport = row_empresa[3]
+        numberidwsapi = row_empresa[4]
+        jwtokenwsapi = row_empresa[5]
 
     #VALIDACION DE EMPRESA
     if idempresa == 0:
@@ -90,18 +95,46 @@ def send_message_back_Ws(messagedata: MessageApi):
     #VALIDACION DE CONVERSACION
     if idcaptura == 0:
         return 'Conversacion no existe'
-    
-    url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
 
-    payload = json.dumps({
-        "message": messagedata.message,
-        "phone": messagedata.valuetype
-    })
-    headers = {
-    'Content-Type': 'application/json'
-    }
 
-    response = requests.request("POST", url, headers=headers, data=payload)     
+
+
+    if messagedata.typemessage == 'Whatsapp':
+            url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
+
+            payload = json.dumps({
+                "message": messagedata.message,
+                "phone": messagedata.valuetype
+            })
+            headers = {
+            'Content-Type': 'application/json'
+            }
+
+            response = requests.request("POST", url, headers=headers, data=payload)    
+    elif messagedata.typemessage == 'WhatsappAPI':
+         
+
+            url = f'https://graph.facebook.com/' + apiwsapiversion + '/' + str(numberidwsapi) + '/messages'
+
+            payload = json.dumps({
+            "messaging_product": "whatsapp",    
+            "recipient_type": "individual",
+            "to": messagedata.valuetype,
+            "type": "text",
+            "text": {
+                "body": messagedata.message
+            }
+            })
+
+
+
+            headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + jwtokenwsapi
+            }
+
+            response = requests.request("POST", url, headers=headers, data=payload)      
+
 
     message = messagedata.message + '\n';
     # GUARDADO RESPUESTA

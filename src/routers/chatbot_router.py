@@ -1,10 +1,26 @@
 from typing import Union
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Request, Response
 
+#data conection Mysql
+from config.mysql_conection import hostMysql
+from config.mysql_conection import userMysql
+from config.mysql_conection import passwordMysql
+from config.mysql_conection import dbMysql
 
+import MySQLdb
 
 #models
 from src.models.message_model import MessageApi
+
+from pydantic import BaseModel
+from typing import List
+
+
+#data conection Wsapi
+from config.apiws import fastapiwshost
+from config.apiws import fastapiwsport
+from config.apiws import apiwshost
+from config.apiws import apiwsapiversion
 
 #quita problema cors
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +49,12 @@ _ = load_dotenv(find_dotenv())
 
 
 chatbot_router = APIRouter()
+
+
+# Request Models.
+class WebhookRequestData(BaseModel):
+    object: str = ""
+    entry: List = []
 
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
@@ -76,11 +98,123 @@ def finish_message():
 @chatbot_router.post('/send_message_back/')
 def send_message_back(messagedata: MessageApi):
 
-    if messagedata.typemessage == 'Whatsapp':     
-        reclamos = utils.send_message_back_Ws(messagedata)
-    else:
-        reclamos = []
-    
+    reclamos = utils.send_message_back_Ws(messagedata)
 
-    return {'respuesta': 'Respuesta Enviada'}
+    return {'respuesta': reclamos}
 
+
+################################ WEBHOOK ####################################
+
+
+### ENVIA MENSAJE DE VUELTA
+@chatbot_router.post('/api/webhook')
+async def webhook(data: WebhookRequestData):
+    """
+    Messages handler.
+    """
+
+    print(data)
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+
+    if data.object == "whatsapp_business_account":
+        for entry in data.entry:
+            
+            messages = entry.get("changes")
+            dict_message = messages[0]
+            data_message = dict_message["value"]
+            #print(data_message["messages"]["from"])
+
+            numberid = data_message["metadata"]["phone_number_id"]
+            numberphone = data_message["metadata"]["display_phone_number"]
+
+
+
+            #BUSCA LA EMPRESA
+            mycursor.execute("""SELECT      id
+                                            , codempresa
+                                            , typechatbot    
+                                            , jwtokenwsapi          
+                                FROM iar2_empresas WHERE numberidwsapi = '%s'""" % (numberid))
+
+            idempresa = 0
+            typechatbot = ''
+            jwtokenwsapi = ''
+            for row_empresa in mycursor.fetchall():
+                idempresa = row_empresa[0]
+                codempresa = row_empresa[1]
+                typechatbot = row_empresa[2]
+                jwtokenwsapi = row_empresa[3]
+
+            if "messages" in data_message: 
+                list_messages = data_message["messages"][0]
+
+
+                fromphone = list_messages["from"]
+                type = list_messages["type"]
+
+                #posibles valores type: text, image, location, document, contacts
+
+                if type == 'text':
+                    txt_message = list_messages["text"]["body"]
+                    
+                    #send_message()
+                    payload = {
+                        "message": txt_message,
+                        "typemessage": "WhatsappAPI",
+                        "valuetype": fromphone,
+                        "solution" : typechatbot,
+                        "enterprise": codempresa                
+                    }
+
+                    instancia = MessageApi(**payload)
+                    response_text = send_message(instancia)
+
+
+                    response_respuesta = response_text["respuesta"]
+
+                    if response_respuesta != '':
+
+                            numberidwsapi = numberid
+                            url = f'https://graph.facebook.com/' + apiwsapiversion + '/' + str(numberidwsapi) + '/messages'
+                            payload = json.dumps({
+                            "messaging_product": "whatsapp",    
+                            "recipient_type": "individual",
+                            "to": fromphone,
+                            "type": "text",
+                            "text": {
+                                "body": response_respuesta
+                            }
+                            })
+
+                            headers = {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + jwtokenwsapi
+                            }
+                            response = requests.request("POST", url, headers=headers, data=payload)                     
+
+    return Response(content="ok")
+
+
+@chatbot_router.get("/api/webhook")
+async def verify(request: Request):
+    """
+    On webook verification VERIFY_TOKEN has to match the token at the
+    configuration and send back "hub.challenge" as success.
+    """
+    if request.query_params.get("hub.mode") == "subscribe" and request.query_params.get(
+        "hub.challenge"
+    ):
+       
+
+        if (
+            not request.query_params.get("hub.verify_token")
+            == os.environ["VERIFY_TOKEN"]
+        ):
+            return Response(content="Verification token mismatch", status_code=403)
+        return Response(content=request.query_params["hub.challenge"])
+
+    return Response(content="Required arguments haven't passed.", status_code=400)

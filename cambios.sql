@@ -58,3 +58,29 @@ ALTER TABLE `iar2_empresas`
 
 ALTER TABLE `iar2_empresas`
 	ADD COLUMN `departamento` VARCHAR(50) NULL DEFAULT NULL AFTER `empresa`;    
+
+
+/*******************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `numberidwsapi` VARCHAR(50) NULL DEFAULT NULL AFTER `port`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `jwtokenwsapi` VARCHAR(250) NULL DEFAULT NULL AFTER `numberidwsapi`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `verifytokenwsapi` VARCHAR(50) NULL DEFAULT NULL AFTER `jwtokenwsapi`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `whatsappapi` TINYINT(4) NULL DEFAULT '0' AFTER `whatsapp`;    
+
+
+CREATE TABLE `iar2_webhook` (
+	`id` INT(11) NOT NULL AUTO_INCREMENT,
+	`call` TEXT NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	`created_at` DATETIME NULL DEFAULT NULL,
+	PRIMARY KEY (`id`) USING BTREE
+)
+COLLATE='utf8mb4_general_ci'
+ENGINE=InnoDB
+;
