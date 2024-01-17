@@ -33,7 +33,7 @@ from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import FileResponse
 from os import getcwd
 from datetime import date
-
+from datetime import datetime
 
 #INCLUDE REPOSITORY
 from src.repository import claim
@@ -103,6 +103,26 @@ def send_message_back(messagedata: MessageApi):
     return {'respuesta': reclamos}
 
 
+
+
+### ENVIA MENSAJE ALERTANDO QUE PROCESO SIGUE FUNCIONANDO
+@chatbot_router.get('/send_message_api_healthy/')
+def send_message_api_healthy():
+    telegram_token = os.environ["TELEGRAM_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHATID"]
+    today = datetime.now()
+    message = 'Api Funcionando. Fecha: ' + today.strftime("%d/%m/%Y, %H:%M:%S")
+    url = f'https://api.telegram.org/bot' + telegram_token + '/sendMessage?chat_id=' + chat_id + '&parse_mode=Markdown&text='+message
+
+    payload = {}
+    headers = {}
+
+    response = requests.request("GET", url, headers=headers, data=payload)
+
+    print(response.text)
+
+    return {'data' : 'API funcionando'}
+
 ################################ WEBHOOK ####################################
 
 
@@ -143,6 +163,7 @@ async def webhook(data: WebhookRequestData):
             idempresa = 0
             typechatbot = ''
             jwtokenwsapi = ''
+            codempresa = ''
             for row_empresa in mycursor.fetchall():
                 idempresa = row_empresa[0]
                 codempresa = row_empresa[1]
