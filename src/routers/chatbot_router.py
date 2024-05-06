@@ -61,14 +61,23 @@ class WebhookRequestData(BaseModel):
 @chatbot_router.post('/send_message/')
 def send_message(messagedata: MessageApi):
 
+    derivacion = 0
+    responsecustomer = ''
     if messagedata.solution == 'Reclamos':     
-        responsecustomer = claim.send_message(messagedata)
+        response = claim.send_message(messagedata)
     elif messagedata.solution == 'FAQ': 
-        responsecustomer = faq.send_message(messagedata)
+        response = faq.send_message(messagedata)
+
     else:
         responsecustomer = 'Parametros Incorrectos'
 
-    return {'respuesta': responsecustomer}
+
+    if responsecustomer == 'Parametros Incorrectos':
+        return {'respuesta': responsecustomer,
+                'derivacion' : derivacion}
+    else:
+        return {'respuesta': response['respuesta'],
+                'derivacion' : response['derivacion']}
 
 
 

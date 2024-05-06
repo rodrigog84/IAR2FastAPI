@@ -246,13 +246,15 @@ def derivation_option(messagedata: MessageApi, id_interaction, idrow):
     
     response_type_response = 'Derivacion'
     response = ''
-
+    derivacion = 0
     if tiene_derivacion == 1:
+        derivacion = 1
         if derivation_message is None:
             responsecustomer = 'Para proporcionarte una asistencia más detallada y personalizada, voy a derivar tu solicitud a uno de nuestros ejecutivos. Estarán en contacto contigo en breve para abordar tus inquietudes de manera más directa.'
         else:
             responsecustomer = derivation_message   
     else:
+        derivacion = 0
         responsecustomer = 'Como su asistente virtual, me encargaré de responder a sus necesidades.'
      
 
@@ -264,7 +266,8 @@ def derivation_option(messagedata: MessageApi, id_interaction, idrow):
     #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
     mycursor.execute(sqlresponse)   
     miConexion.commit()
-    return responsecustomer
+    return {'respuesta': responsecustomer,
+            'derivacion' : derivacion}
 
 
 def chatbot_message2(messagedata: MessageApi, id_interaction, idrow, promp1):
@@ -617,15 +620,19 @@ def send_message(messagedata: MessageApi):
 
     #VALIDACION DE EMPRESA
     if idempresa == 0:
-        return 'Empresa no existe'
+        return {'respuesta': 'Empresa no existe',
+                'derivacion' : 0}
     
     #VALIDACION DE CANAL
     if messagedata.typemessage == 'Whatsapp' and whatsapp == 0:
-        return 'Canal no permitido'
+        return {'respuesta': 'Canal no permitido',
+                'derivacion' : 0}
     if messagedata.typemessage == 'Webchat' and webchat == 0:
-        return 'Canal no permitido'    
+        return {'respuesta': 'Canal no permitido' ,
+                'derivacion' : 0}   
     if messagedata.typemessage == 'WhatsappAPI' and whatsappapi == 0:
-        return 'Canal no permitido'    
+        return {'respuesta': 'Canal no permitido' ,
+                'derivacion' : 0}   
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
@@ -635,7 +642,8 @@ def send_message(messagedata: MessageApi):
          
          resp = limpiar_registro(messagedata, idempresa)
 
-         return resp
+         return {'respuesta': resp,
+                'derivacion' : 0} 
  
     #OBTIENE DATOS PRINCIPALES INTERACCION
     mycursor.execute("""SELECT      id
@@ -647,7 +655,7 @@ def send_message(messagedata: MessageApi):
                         AND         finish = 0
                         ORDER BY    updated_at DESC
                         LIMIT 1""" % (messagedata.typemessage,messagedata.valuetype,idempresa))
-
+    derivation = 0
     tiene_mensaje = 0
     for row_interaction in mycursor.fetchall():
         tiene_mensaje = 1
@@ -662,7 +670,8 @@ def send_message(messagedata: MessageApi):
         else:
             responsecustomer = greeting_message(messagedata)
             
-        return responsecustomer
+        return {'respuesta': responsecustomer,
+                'derivacion' : 0}
 
     # GUARDADO MENSAJE ENTRANTE
     sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise, idinteraction) VALUES (%s, %s, %s, %s, %s)"
@@ -679,7 +688,8 @@ def send_message(messagedata: MessageApi):
         derivation = 1 # VER QUE HACER ACA
 
         if tiene_derivacion == 1:
-            return ''
+            return {'respuesta': '',
+                    'derivacion' : 1}
      
     ########################################################################################################
     
@@ -700,15 +710,17 @@ def send_message(messagedata: MessageApi):
 
     ## CASO 4: CLIENTE PIDE AHORA DERIVACION
     if response_derivacion == 'SI':
-        responsecustomer = derivation_option(messagedata, id_interaction, idrow)
-        return responsecustomer
+        responsederivation = derivation_option(messagedata, id_interaction, idrow)
+        return {'respuesta': responsederivation['respuesta'],
+                'derivacion' : responsederivation['derivacion']}
 
 
 
     ## CASO 5: COMUNICACION CON CHATBOT
     responsecustomer = chatbot_message(messagedata, id_interaction, idrow,  promp1)
 
-    return responsecustomer
+    return {'respuesta': responsecustomer,
+            'derivacion' : 0}
 
 
 def get_messages(enterprise: str):
