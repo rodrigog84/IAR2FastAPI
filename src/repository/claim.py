@@ -570,6 +570,7 @@ def finish_message():
     typemessage = ''
     valuetype = ''
     identerprise = ''
+    url = ''
 
     message_alerta_cierre = '¡Hola de nuevo! Parece que ha pasado un tiempo desde nuestra última interacción. Nuestro sistema de seguridad cerrará en unos minutos la sesión por inactividad. Si tienes alguna información adicional, por favor, no dudes en escribir..'
     message_cierre = 'Nuestro sistema de seguridad ha cerrado la sesión por inactividad..'
