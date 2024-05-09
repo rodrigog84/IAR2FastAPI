@@ -133,6 +133,30 @@ def send_message_api_healthy():
 
     return {'data' : 'API funcionando'}
 
+
+### ENVIA MENSAJE ALERTANDO QUE PROCESO SIGUE FUNCIONANDO
+@chatbot_router.get('/send_image_qr_whatsapp/')
+def send_image_qr_whatsapp():
+    telegram_token = os.environ["TELEGRAM_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHATID"]
+    ambiente = os.environ["AMBIENTE"]
+    today = datetime.now()
+    caption  = 'Envío QR Whatsapp ' + ambiente + ' Funcionando. Fecha: ' + today.strftime("%d/%m/%Y, %H:%M:%S")
+
+    image_path = 'src/routers/uploads/bot.qr.png'  # Ruta de la imagen que deseas enviar
+    img = open(image_path, 'rb')
+    url = f'https://api.telegram.org/bot' + telegram_token + '/sendPhoto?chat_id=' + chat_id
+
+    payload = {}
+    headers = {}
+
+    response = requests.post(url, headers=headers, files = {'photo': img})
+
+    print(response.text)
+
+    return {'data' : 'Envío QR'}
+
+
 ################################ WEBHOOK ####################################
 
 
