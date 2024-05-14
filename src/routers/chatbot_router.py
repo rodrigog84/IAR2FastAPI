@@ -144,16 +144,20 @@ def send_image_qr_whatsapp():
     caption  = 'Envío QR Whatsapp ' + ambiente + ' Funcionando. Fecha: ' + today.strftime("%d/%m/%Y, %H:%M:%S")
 
     image_path = 'src/routers/uploads/bot.qr.png'  # Ruta de la imagen que deseas enviar
-    img = open(image_path, 'rb')
-    url = f'https://api.telegram.org/bot' + telegram_token + '/sendPhoto?chat_id=' + chat_id
 
-    payload = {}
-    headers = {}
+    if os.path.exists(image_path):
+        img = open(image_path, 'rb')
+        url = f'https://api.telegram.org/bot' + telegram_token + '/sendPhoto?chat_id=' + chat_id
 
-    response = requests.post(url, headers=headers, files = {'photo': img})
+        payload = {}
+        headers = {}
 
-    print(response.text)
+        response = requests.post(url, headers=headers, files = {'photo': img})
 
+        print(response.text)
+
+
+    
     return {'data' : 'Envío QR'}
 
 
