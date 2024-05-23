@@ -164,7 +164,6 @@ def send_message_cli_healthy():
     #BUSCA LA EMPRESA
     mycursor.execute("""SELECT      DISTINCT i.id
                                     ,i.port
-                                    ,
                         FROM        iar2_empresas i
                         WHERE       i.whatsapp = 1""")
     
