@@ -577,6 +577,8 @@ def finish_message():
     
     reclamos = []
     registro = []
+
+
     for row_interaction in mycursor.fetchall():
 
         typemessage = row_interaction[0]
@@ -597,13 +599,15 @@ def finish_message():
                                         ,c.id as idinteracion
                                         ,e.numberidwsapi
                                         ,e.jwtokenwsapi
+                                        ,e.whatsapp
+                                        ,e.whatsappapi
                             FROM        iar2_interaction c  
                             INNER JOIN  iar2_empresas e  on c.identerprise = e.id
                             WHERE 	    finish = 0
                             AND         typemessage = '%s' 
                             AND 	    valuetype = '%s' 
                             AND         identerprise = %d""" % (typemessage,valuetype,identerprise))
-
+        
         for row_register in mycursor2.fetchall():
                 messageresponsecustomer = row_register[0]
                 typeresponse = row_register[1]
@@ -614,21 +618,25 @@ def finish_message():
                 id_interaction = row_register[6]
                 numberidwsapi = row_register[7]
                 jwtokenwsapi = row_register[8]
+                whatsapp = row_register[9]
+                whatsappapi = row_register[10]
               
                 
                 
 
                 mycursor3 = miConexion.cursor()
-
+                
                 # SI ULTIMO MENSAJE FUE DEL CHATBOT, ES DE WHATSAPP, ES DE INTERACCION O SALUDO Y FUE HACE MÁS DE 30 MINUTOS, ENVIAR MENSAJE DE ALERTA DE CIERRE
-                if (typemessage == 'Whatsapp' or typemessage == 'WhatsappAPI') and messageresponsecustomer != '' and typeresponse != 'Alerta Cierre' and minutos > apiwsclosealertminutes:
+                
+                if (typemessage == 'Whatsapp' or typemessage == 'WhatsappAPI' or typemessage == 'WebChat') and messageresponsecustomer != '' and typeresponse != 'Alerta Cierre' and minutos > apiwsclosealertminutes:
                     
                     #response = requests.get(url)
-                    
-
-                    if typemessage == 'Whatsapp':
+ 
+                    if typemessage == 'Whatsapp' and whatsapp == 1:
                         
                         url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
+
+                        
                         payload = json.dumps({
                             "message": message_alerta_cierre,
                             "phone": valuetype
@@ -637,9 +645,10 @@ def finish_message():
                         'Content-Type': 'application/json'
                         }
                         response = requests.request("POST", url, headers=headers, data=payload)                    
-                    elif typemessage == 'WhatsappAPI':
+                    elif typemessage == 'WhatsappAPI' and whatsappapi == 1:
 
                         url = f'https://graph.facebook.com/' + apiwsapiversion + '/' + str(numberidwsapi) + '/messages'
+
                         payload = json.dumps({
                         "messaging_product": "whatsapp",    
                         "recipient_type": "individual",
@@ -661,6 +670,8 @@ def finish_message():
                     
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
                     val = (typemessage, valuetype, 'Alerta de cierre de sesion', 'Alerta Cierre', identerprise)
+
+
                     mycursor3.execute(sql, val)   
                     miConexion.commit()
 
@@ -669,11 +680,11 @@ def finish_message():
                     miConexion.commit()    
 
                 # SI ULTIMO MENSAJE FUE DE ALERTA DE CIERRE Y DE WHATSAPP, ENVIAR MENSAJE DE CIERRE
-                if (typemessage == 'Whatsapp' or typemessage == 'WhatsappAPI') and typeresponse == 'Alerta Cierre' and minutos > apiwscloseminutes:
+                if (typemessage == 'Whatsapp' or typemessage == 'WhatsappAPI' or typemessage == 'WebChat') and typeresponse == 'Alerta Cierre' and minutos > apiwscloseminutes:
                     #url = f'http://' + apiwshost + ':' + apiwsport + '/api/CallBack?p=' + valuetype + '&q=2'
                     #response = requests.get(url)
 
-                    if typemessage == 'Whatsapp':
+                    if typemessage == 'Whatsapp' and whatsapp == 1:
                         url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
                         payload = json.dumps({
                             "message": message_cierre,
@@ -684,7 +695,7 @@ def finish_message():
                         }
 
                         response = requests.request("POST", url, headers=headers, data=payload) 
-                    elif typemessage == 'WhatsappAPI':
+                    elif typemessage == 'WhatsappAPI' and whatsappapi == 1:
 
                         url = f'https://graph.facebook.com/' + apiwsapiversion + '/' + str(numberidwsapi) + '/messages'
                         payload = json.dumps({
