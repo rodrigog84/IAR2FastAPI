@@ -174,7 +174,6 @@ def send_message_cli_healthy():
     
     valuetype = '56995089648'
     for row_enterprise in mycursor.fetchall():
-        print(row_enterprise[0])
         apiwsport = row_enterprise[1]
         empresa = row_enterprise[2]
         message = 'Whatsapp ' + ambiente + ' Funcionando. Empresa: ' + empresa + '. Fecha: ' + today.strftime("%d/%m/%Y, %H:%M:%S")
