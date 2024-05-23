@@ -117,6 +117,7 @@ def send_message_back(messagedata: MessageApi):
 ### ENVIA MENSAJE ALERTANDO QUE PROCESO SIGUE FUNCIONANDO
 @chatbot_router.get('/send_message_api_healthy/')
 def send_message_api_healthy():
+    
     telegram_token = os.environ["TELEGRAM_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHATID"]
     ambiente = os.environ["AMBIENTE"]
@@ -132,6 +133,16 @@ def send_message_api_healthy():
     print(response.text)
 
     return {'data' : 'API funcionando'}
+
+
+### ENVIA MENSAJE ALERTANDO QUE PROCESO SIGUE FUNCIONANDO
+@chatbot_router.get('/send_message_cli_healthy/')
+def send_message_cli_healthy():
+
+
+    reclamos = utils.send_message_cli_healthy()
+
+    return {'data' : 'Evaluacion Ws'}
 
 
 ### ENVIA MENSAJE ALERTANDO QUE PROCESO SIGUE FUNCIONANDO

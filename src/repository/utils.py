@@ -44,6 +44,7 @@ from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import FileResponse
 from os import getcwd
 from datetime import date
+from datetime import datetime
 
 
 import os
@@ -150,3 +151,40 @@ def send_message_back_Ws(messagedata: MessageApi):
     miConexion.commit()    
 
     return 'Respuesta Enviada'
+
+
+## EVALUA CLIENTE FUNCIONANDO
+def send_message_cli_healthy():
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      DISTINCT i.id
+                                    ,i.port
+                                    ,
+                        FROM        iar2_empresas i
+                        WHERE       i.whatsapp = 1""")
+    
+
+    ambiente = os.environ["AMBIENTE"]
+    today = datetime.now()
+    message = 'Whatsapp ' + ambiente + ' Funcionando. Fecha: ' + today.strftime("%d/%m/%Y, %H:%M:%S")
+    valuetype = '56995089648'
+    for row_enterprise in mycursor.fetchall():
+        print(row_enterprise[0])
+        apiwsport = row_enterprise[1]
+
+        url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
+        payload = json.dumps({
+            "message": message,
+            "phone": valuetype
+        })
+        headers = {
+        'Content-Type': 'application/json'
+        }
+        response = requests.request("POST", url, headers=headers, data=payload)     
+
+    return 'Evaluacion Ws'
