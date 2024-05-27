@@ -882,7 +882,7 @@ def finish_message():
                         
                         url = f'http://' + apiwshost + ':' + str(apiwsport) + '/api/CallBack'
                         payload = json.dumps({
-                            "message": message_alerta_cierre,
+                            "message": message_cierre,
                             "phone": valuetype
                         })
                         headers = {
@@ -898,7 +898,7 @@ def finish_message():
                         "to": valuetype,
                         "type": "text",
                         "text": {
-                            "body": message_alerta_cierre
+                            "body": message_cierre
                         }
                         })
 

@@ -704,7 +704,7 @@ def finish_message():
                         "to": valuetype,
                         "type": "text",
                         "text": {
-                            "body": message_alerta_cierre
+                            "body": message_cierre
                         }
                         })
 

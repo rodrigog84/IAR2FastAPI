@@ -119,8 +119,8 @@ def send_message_back(messagedata: MessageApi):
 def send_message_api_healthy():
     
     #EVALUA WS
-    reclamos = utils.send_message_cli_healthy() 
-    print(reclamos)
+    #reclamos = utils.send_message_cli_healthy() 
+    #print(reclamos)
 
     #EVALUA API
     telegram_token = os.environ["TELEGRAM_TOKEN"]
