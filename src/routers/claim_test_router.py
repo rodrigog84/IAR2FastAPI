@@ -194,7 +194,8 @@ def enviareclamo(messagedata: MessageApi):
 def enviareclamolangchain2(messagedata: MessageApi):
 
     ##MODELO DE LENGUAJE
-    llm_name = "gpt-3.5-turbo"    
+    #llm_name = "gpt-3.5-turbo"    
+    llm_name = os.environ["LLM"]   
     memory = ConversationBufferMemory(memory_key="chat_history")
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )

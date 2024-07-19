@@ -66,7 +66,8 @@ claim_gen_router = APIRouter()
 def enviareclamolangchain(messagedata: MessageApi):
 
     ##MODELO DE LENGUAJE
-    llm_name = "gpt-3.5-turbo"   
+    #llm_name = "gpt-3.5-turbo"   
+    llm_name = os.environ["LLM"]   
     llm = ChatOpenAI(model_name=llm_name, temperature=0) 
     memory = ConversationBufferMemory(memory_key="chat_history")
 

@@ -271,7 +271,8 @@ def derivation_option(messagedata: MessageApi, id_interaction, idrow):
 
 def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
-    llm_name = "gpt-3.5-turbo"   
+    #llm_name = "gpt-3.5-turbo"   
+    llm_name = os.environ["LLM"]   
     llm = ChatOpenAI(model_name=llm_name, temperature=0) 
     memory = ConversationBufferMemory(memory_key="chat_history")
 
@@ -355,7 +356,9 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 def send_message(messagedata: MessageApi):
 
     ##MODELO DE LENGUAJE
-    llm_name = "gpt-3.5-turbo"   
+    #llm_name = "gpt-3.5-turbo"   
+    llm_name = os.environ["LLM"]   
+    
     llm = ChatOpenAI(model_name=llm_name, temperature=0) 
     memory = ConversationBufferMemory(memory_key="chat_history")
 
