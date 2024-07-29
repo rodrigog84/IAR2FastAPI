@@ -55,15 +55,16 @@ from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 
 
-# Variables globales
-qa_chain_1 = None
+# Diccionario global para almacenar las instancias de qa_chain
+qa_chains = {}
 
-def initialize_qa_chain_1():
-    global qa_chain_1
+
+#FUNCION PARA INICIALIZAR RAG PARA CASOS FAQ
+def initialize_qa_chain(codempresa):
+    global qa_chains
     llm_name = os.environ["LLM"] 
     llm = ChatOpenAI(model_name=llm_name, temperature=0) 
 
-    codempresa = 'K?@pi;{qq)#Rc4]jmzL!H1/ufQ+ckH'
     embedding = OpenAIEmbeddings()
 
     #CONEXION
@@ -128,7 +129,7 @@ def initialize_qa_chain_1():
     # Run chain
     #RetrievalQA.from_chain_type sirve para hacer solo la consulta
     
-    qa_chain_1 = ConversationalRetrievalChain.from_llm(
+    qa_chain = ConversationalRetrievalChain.from_llm(
                     llm=llm, 
                     retriever=vectordb.as_retriever(),
                     #memory=memory,
@@ -136,11 +137,19 @@ def initialize_qa_chain_1():
                     return_source_documents=False,
                     combine_docs_chain_kwargs=chain_type_kwargs)     
 
+    qa_chains[codempresa] = qa_chain
+
+#INICIALIZA CADA UNO DE LOS RAG EXISTENTES
+def initialize_all_qa_chains():
+    miConexion = MySQLdb.connect(host=hostMysql, user=userMysql, passwd=passwordMysql, db=dbMysql)
+    mycursor = miConexion.cursor()
+    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'FAQ'")
+    for (codempresa,) in mycursor.fetchall():
+        initialize_qa_chain(codempresa)
 
 
-# Inicializar el QA chain al inicio
-initialize_qa_chain_1()
-
+# Inicializar todas las empresas al inicio
+initialize_all_qa_chains()
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -494,6 +503,8 @@ def chatbot_message2(messagedata: MessageApi, id_interaction, idrow, promp1):
 def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     #llm_name = "gpt-3.5-turbo"   
+    global qa_chains
+
     llm_name = os.environ["LLM"]   
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     #CONEXION
@@ -567,12 +578,15 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     #ESCRIBIR LAS DISTINTAS PREGUNTAS
      
     question = messagedata.message 
+    codempresa = messagedata.enterprise
 
+    qa_chain = qa_chains[codempresa]
+    if codempresa not in qa_chains:
+        initialize_qa_chain(codempresa)
 
-    question = messagedata.message
 
     chat_history = []
-    result = qa_chain_1({"question": question, "chat_history": messages})
+    result = qa_chain({"question": question, "chat_history": messages})
     
     response = result["answer"]
     typeresponse = 'Interaccion'
