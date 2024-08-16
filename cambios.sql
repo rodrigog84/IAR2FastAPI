@@ -84,3 +84,12 @@ CREATE TABLE `iar2_webhook` (
 COLLATE='utf8mb4_general_ci'
 ENGINE=InnoDB
 ;
+/**************************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;
+	
+
+	ALTER TABLE `iar2_empresas`
+	ADD COLUMN `chunk_size` INT NULL DEFAULT '0' AFTER `derivation_message`,
+	ADD COLUMN `chunk_overlap` INT NULL DEFAULT '0' AFTER `chunk_size`;

@@ -39,6 +39,7 @@ from datetime import datetime
 from src.repository import claim
 from src.repository import faq
 from src.repository import utils
+from src.repository import pdf
 
 
 import os
@@ -67,7 +68,8 @@ def send_message(messagedata: MessageApi):
         response = claim.send_message(messagedata)
     elif messagedata.solution == 'FAQ': 
         response = faq.send_message(messagedata)
-
+    elif messagedata.solution == 'PDF': 
+        response = pdf.send_message(messagedata)
     else:
         responsecustomer = 'Parametros Incorrectos'
 
@@ -98,6 +100,7 @@ def get_messages(enterprise: str,solution: str):
 def finish_message():
     message = claim.finish_message()
     message = faq.finish_message()
+    message = pdf.finish_message()
     return {'data' : message}
 
 

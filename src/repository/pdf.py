@@ -33,6 +33,10 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+
 import MySQLdb
 
 #AGREGA CARACTERES DE ESCAPE EN SQL
@@ -82,10 +86,14 @@ def initialize_qa_chain(codempresa):
                                     , time_max
                                     , derivation
                                     , derivation_message
+                                    , chunk_size
+                                    , chunk_overlap
                         FROM iar2_empresas WHERE codempresa = '%s'""" % (codempresa))
     
     idempresa = 0
     promp1 = ''
+    var_chunk_size = 0
+    var_chunk_overlap = 0
     for row_empresa in mycursor.fetchall():
         idempresa = row_empresa[0]
         promp1 = row_empresa[2]
@@ -96,27 +104,52 @@ def initialize_qa_chain(codempresa):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]     
+        var_chunk_size = row_empresa[10]     
+        var_chunk_overlap = row_empresa[10]     
 
 
     promp_original = promp1
+    
+    if var_chunk_size == 0:
+        var_chunk_size = 1500
+
+    if var_chunk_overlap == 0:
+        var_chunk_overlap = 150
+
+
     ############################################################################################################
-    ##   OBTENER PREGUNTAS FRECUENTES
-    mycursor.execute("""SELECT  question
-                            , answer
-                    FROM    iar2_faq
-                    WHERE   identerprise = '%d' 
-                    ORDER BY id """ % (idempresa))          
+
+    # Obtener la lista de archivos asociados a la empresa
+    mycursor.execute("""SELECT file_path FROM iar2_files WHERE identerprise = '%d'""" % (idempresa))
+    file_paths = [row[0] for row in mycursor.fetchall()]    
+
+    #print(file_paths)
+    all_docs = []
+    for file_relative_path in file_paths:
+        file_relative_path_full = f"src/routers/filesrag/{idempresa}/{file_relative_path}" 
+        #print(file_relative_path_full)
+        loader = PyPDFLoader(file_relative_path_full)
+        docs = loader.load()
+        all_docs.extend(docs)   
 
 
-    texts = []
-    question_text = ""
-    for questions in mycursor.fetchall():
-        question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
-        texts.append(question_text)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size = var_chunk_size,
+        chunk_overlap = var_chunk_overlap
+    )    
 
-    vectordb = Chroma.from_texts(texts, embedding=embedding)
+    splits = text_splitter.split_documents(all_docs)
 
+    persist_directory = f'src/routers/filesrag/{idempresa}/chroma/'
+    vectordb = Chroma.from_documents(
+        documents=splits,
+        embedding=embedding,
+        persist_directory=persist_directory
+    )    
 
+    #print(docs[0].page_content[:100])
+
+  
     template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
@@ -142,13 +175,13 @@ def initialize_qa_chain(codempresa):
 def initialize_all_qa_chains():
     miConexion = MySQLdb.connect(host=hostMysql, user=userMysql, passwd=passwordMysql, db=dbMysql)
     mycursor = miConexion.cursor()
-    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'FAQ'")
+    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'PDF'")
     for (codempresa,) in mycursor.fetchall():
         initialize_qa_chain(codempresa)
 
 
-# Inicializar todas las empresas al inicio
-#initialize_all_qa_chains()
+# Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
+#initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -582,8 +615,8 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
-    qa_chain = qa_chains[codempresa]
 
+    qa_chain = qa_chains[codempresa]
     chat_history = []
     result = qa_chain({"question": question, "chat_history": messages})
     
