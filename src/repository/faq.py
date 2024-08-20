@@ -107,6 +107,8 @@ def initialize_qa_chain(codempresa):
                     WHERE   identerprise = '%d' 
                     ORDER BY id """ % (idempresa))          
 
+    ## AGREGAR CONTROL DE ERRORES EN QUE INICIALICE SÓLO SI LA EMPRESA CORRESPONDE (EJ, AL PREGUNTAR POR FAQ EN UNA EMPRESA QUE NO ES FAQ)
+
 
     texts = []
     question_text = ""
@@ -114,6 +116,7 @@ def initialize_qa_chain(codempresa):
         question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
         texts.append(question_text)
 
+    
     vectordb = Chroma.from_texts(texts, embedding=embedding)
 
 
@@ -148,7 +151,7 @@ def initialize_all_qa_chains():
 
 
 # Inicializar todas las empresas al inicio
-#initialize_all_qa_chains()
+initialize_all_qa_chains()
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 

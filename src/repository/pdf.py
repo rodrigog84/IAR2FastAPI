@@ -58,6 +58,7 @@ import tiktoken
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 
+import shutil
 
 # Diccionario global para almacenar las instancias de qa_chain
 qa_chains = {}
@@ -117,38 +118,60 @@ def initialize_qa_chain(codempresa):
         var_chunk_overlap = 150
 
 
+    # DEFINE PREFIJO RUTA
+    prefijo = os.environ["PREFIJO_RUTA"] 
     ############################################################################################################
 
     # Obtener la lista de archivos asociados a la empresa
     mycursor.execute("""SELECT file_path FROM iar2_files WHERE identerprise = '%d'""" % (idempresa))
     file_paths = [row[0] for row in mycursor.fetchall()]    
 
-    #print(file_paths)
+    print(codempresa)
+    print(idempresa)
+    print(file_paths)
     all_docs = []
     for file_relative_path in file_paths:
-        file_relative_path_full = f"src/routers/filesrag/{idempresa}/{file_relative_path}" 
-        #print(file_relative_path_full)
+        file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
+        print(file_relative_path_full)
         loader = PyPDFLoader(file_relative_path_full)
         docs = loader.load()
+        #print(docs[0].page_content[:100])
         all_docs.extend(docs)   
 
-
+    
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = var_chunk_size,
         chunk_overlap = var_chunk_overlap
     )    
 
+    print(text_splitter)
+
     splits = text_splitter.split_documents(all_docs)
 
-    persist_directory = f'src/routers/filesrag/{idempresa}/chroma/'
+    persist_directory = f'{prefijo}src/routers/filesrag/{idempresa}/chroma/'
+    
+    # Elimina el directorio y todo su contenido
+
+    # Verificar si el directorio existe antes de eliminarlo
+    if os.path.exists(persist_directory):
+        shutil.rmtree(persist_directory)
+
+
+    # Crear el directorio (y cualquier directorio intermedio necesario)
+    os.makedirs(persist_directory, exist_ok=True)
+    
+    print(persist_directory)
+    
+    #AQUI FALLA CON PM2
+    
     vectordb = Chroma.from_documents(
         documents=splits,
         embedding=embedding,
         persist_directory=persist_directory
     )    
-
-    #print(docs[0].page_content[:100])
-
+    
+    
+    
   
     template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
@@ -156,7 +179,7 @@ def initialize_qa_chain(codempresa):
     Helpful Answer:"""
     QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
-
+    
     chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
     # Run chain
     #RetrievalQA.from_chain_type sirve para hacer solo la consulta
@@ -168,8 +191,9 @@ def initialize_qa_chain(codempresa):
                     get_chat_history=lambda h:h,
                     return_source_documents=False,
                     combine_docs_chain_kwargs=chain_type_kwargs)     
-
+    
     qa_chains[codempresa] = qa_chain
+    
 
 #INICIALIZA CADA UNO DE LOS RAG EXISTENTES
 def initialize_all_qa_chains():
@@ -181,7 +205,7 @@ def initialize_all_qa_chains():
 
 
 # Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
-#initialize_all_qa_chains() 
+initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
