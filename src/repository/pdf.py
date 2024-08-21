@@ -89,7 +89,7 @@ def initialize_qa_chain(codempresa):
                                     , derivation_message
                                     , chunk_size
                                     , chunk_overlap
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (codempresa))
+                        FROM iar2_empresas WHERE typechatbot = 'PDF' AND codempresa = '%s'""" % (codempresa))
     
     idempresa = 0
     promp1 = ''
@@ -126,13 +126,13 @@ def initialize_qa_chain(codempresa):
     mycursor.execute("""SELECT file_path FROM iar2_files WHERE identerprise = '%d'""" % (idempresa))
     file_paths = [row[0] for row in mycursor.fetchall()]    
 
-    print(codempresa)
-    print(idempresa)
-    print(file_paths)
+    #print(codempresa)
+    #print(idempresa)
+    #print(file_paths)
     all_docs = []
     for file_relative_path in file_paths:
         file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
-        print(file_relative_path_full)
+        #print(file_relative_path_full)
         loader = PyPDFLoader(file_relative_path_full)
         docs = loader.load()
         #print(docs[0].page_content[:100])
@@ -144,7 +144,7 @@ def initialize_qa_chain(codempresa):
         chunk_overlap = var_chunk_overlap
     )    
 
-    print(text_splitter)
+    #print(text_splitter)
 
     splits = text_splitter.split_documents(all_docs)
 
@@ -160,7 +160,7 @@ def initialize_qa_chain(codempresa):
     # Crear el directorio (y cualquier directorio intermedio necesario)
     os.makedirs(persist_directory, exist_ok=True)
     
-    print(persist_directory)
+    #print(persist_directory)
     
     #AQUI FALLA CON PM2
     
@@ -696,7 +696,7 @@ def send_message(messagedata: MessageApi):
                                     		 ELSE 0
                                       END fuera_time_max   
                                     , whatsappapi                          
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE typechatbot = 'PDF' AND codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''

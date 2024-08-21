@@ -82,7 +82,7 @@ def initialize_qa_chain(codempresa):
                                     , time_max
                                     , derivation
                                     , derivation_message
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (codempresa))
+                        FROM iar2_empresas WHERE typechatbot = 'FAQ' AND codempresa = '%s'""" % (codempresa))
     
     idempresa = 0
     promp1 = ''
@@ -642,7 +642,7 @@ def send_message(messagedata: MessageApi):
                                     		 ELSE 0
                                       END fuera_time_max   
                                     , whatsappapi                          
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE typechatbot = 'FAQ' AND codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''

@@ -384,7 +384,7 @@ def send_message(messagedata: MessageApi):
                                     		 ELSE 0
                                       END fuera_time_max   
                                     , whatsappapi               
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE typechatbot = 'Reclamos' AND codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''
