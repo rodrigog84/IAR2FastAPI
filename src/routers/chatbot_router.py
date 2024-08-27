@@ -40,7 +40,7 @@ from src.repository import claim
 from src.repository import faq
 from src.repository import utils
 from src.repository import pdf
-
+from src.repository import api
 
 import os
 import openai
@@ -61,7 +61,7 @@ class WebhookRequestData(BaseModel):
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 @chatbot_router.post('/send_message/')
 def send_message(messagedata: MessageApi):
-
+    
     derivacion = 0
     responsecustomer = ''
     if messagedata.solution == 'Reclamos':     
@@ -70,6 +70,8 @@ def send_message(messagedata: MessageApi):
         response = faq.send_message(messagedata)
     elif messagedata.solution == 'PDF': 
         response = pdf.send_message(messagedata)
+    elif messagedata.solution == 'API': 
+        response = api.send_message(messagedata)        
     else:
         responsecustomer = 'Parametros Incorrectos'
 
