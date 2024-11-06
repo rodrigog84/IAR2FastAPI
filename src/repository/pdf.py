@@ -974,7 +974,7 @@ def finish_message():
                     elif typemessage == 'WebChat' and webchat == 1:
 
                         # Construir la URL del endpoint con el user_id correspondiente
-                        url = f'http://{apirest_url}/send_inactivity_message/{valuetype}'
+                        url = f'https://{apirest_url}/send_inactivity_message/{valuetype}'
                         
                         # Definir el payload con el mensaje de inactividad personalizado
                         payload = {
@@ -1044,7 +1044,7 @@ def finish_message():
                     elif typemessage == 'WebChat' and webchat == 1:
 
                         # Construir la URL del endpoint con el user_id correspondiente
-                        url = f'http://{apirest_url}/send_inactivity_message/{valuetype}'
+                        url = f'https://{apirest_url}/send_inactivity_message/{valuetype}'
                         
                         # Definir el payload con el mensaje de inactividad personalizado
                         payload = {

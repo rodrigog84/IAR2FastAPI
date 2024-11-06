@@ -65,7 +65,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print(user_id)
             print(message)
 
-            url = f'http://' + apirest_url + '/send_message/'
+            url = f'https://' + apirest_url + '/send_message/'
             print(url)
             payload = {
                 "message": message,
