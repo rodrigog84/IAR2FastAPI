@@ -34,9 +34,13 @@ import MySQLdb
 #AGREGA CARACTERES DE ESCAPE EN SQL
 from sqlescapy import sqlescape
 
+#IMPORTAR WEBSOCKET
+from ..routers.websocket_router import manager
+
 
 import json
 import requests
+import httpx
 
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import FileResponse
@@ -554,6 +558,8 @@ def get_messages(enterprise: str):
 
 def finish_message():
 
+    apirest_url = os.environ["IP_APIREST"]
+
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
@@ -604,6 +610,7 @@ def finish_message():
                                         ,e.jwtokenwsapi
                                         ,e.whatsapp
                                         ,e.whatsappapi
+                                        ,e.webchat                           
                             FROM        iar2_interaction c  
                             INNER JOIN  iar2_empresas e  on c.identerprise = e.id
                             WHERE 	    finish = 0
@@ -623,6 +630,7 @@ def finish_message():
                 jwtokenwsapi = row_register[8]
                 whatsapp = row_register[9]
                 whatsappapi = row_register[10]
+                webchat = row_register[11]  
               
                 
                 
@@ -669,6 +677,29 @@ def finish_message():
 
                         response = requests.request("POST", url, headers=headers, data=payload)   
 
+                    elif typemessage == 'WebChat' and webchat == 1:
+
+                        # Construir la URL del endpoint con el user_id correspondiente
+                        url = f'http://{apirest_url}/send_inactivity_message/{valuetype}'
+                        
+                        # Definir el payload con el mensaje de inactividad personalizado
+                        payload = {
+                            "message": message_alerta_cierre
+                        }
+                        headers = {
+                            'Content-Type': 'application/json'
+                        }
+                        
+                        # Realizar la solicitud POST de forma sincrónica
+                        try:
+                            response = httpx.post(url, headers=headers, json=payload)
+                            # Manejar la respuesta del servidor
+                            if response.status_code == 200:
+                                print("Mensaje de inactividad enviado exitosamente:", response.json())
+                            else:
+                                print("Error al enviar el mensaje de inactividad:", response.status_code, response.text)
+                        except httpx.RequestError as exc:
+                            print(f"Error de conexión: {exc}")
 
                     
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
@@ -719,6 +750,30 @@ def finish_message():
                         response = requests.request("POST", url, headers=headers, data=payload)                           
 
 
+                    elif typemessage == 'WebChat' and webchat == 1:
+
+                        # Construir la URL del endpoint con el user_id correspondiente
+                        url = f'http://{apirest_url}/send_inactivity_message/{valuetype}'
+                        
+                        # Definir el payload con el mensaje de inactividad personalizado
+                        payload = {
+                            "message": message_cierre
+                        }
+                        headers = {
+                            'Content-Type': 'application/json'
+                        }
+                        
+                        # Realizar la solicitud POST de forma sincrónica
+                        try:
+                            response = httpx.post(url, headers=headers, json=payload)
+                            # Manejar la respuesta del servidor
+                            if response.status_code == 200:
+                                print("Mensaje de inactividad enviado exitosamente:", response.json())
+                            else:
+                                print("Error al enviar el mensaje de inactividad:", response.status_code, response.text)
+                        except httpx.RequestError as exc:
+                            print(f"Error de conexión: {exc}")
+                            
 
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
                     val = (typemessage, valuetype, 'Cierre de sesion definitivo', 'Cierre Conversación', identerprise)
