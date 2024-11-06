@@ -51,6 +51,7 @@ async def websocket_endpoint(websocket: WebSocket):
     solution = initial_data["solution"]
 
     apirest_url = os.environ["IP_APIREST"]
+    prefix_url = os.environ["PREFIX_APIREST"]
 
 
     # Conecta al usuario usando su `user_id`
@@ -65,7 +66,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print(user_id)
             print(message)
 
-            url = f'https://' + apirest_url + '/send_message/'
+            url = f'{prefix_url}://{apirest_url}/send_message/'
             print(url)
             payload = {
                 "message": message,

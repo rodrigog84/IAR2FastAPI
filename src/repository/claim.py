@@ -559,6 +559,7 @@ def get_messages(enterprise: str):
 def finish_message():
 
     apirest_url = os.environ["IP_APIREST"]
+    prefix_url = os.environ["PREFIX_APIREST"]
 
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -680,7 +681,7 @@ def finish_message():
                     elif typemessage == 'WebChat' and webchat == 1:
 
                         # Construir la URL del endpoint con el user_id correspondiente
-                        url = f'https://{apirest_url}/send_inactivity_message/{valuetype}'
+                        url = f'{prefix_url}://{apirest_url}/send_inactivity_message/{valuetype}'
                         
                         # Definir el payload con el mensaje de inactividad personalizado
                         payload = {
@@ -753,7 +754,7 @@ def finish_message():
                     elif typemessage == 'WebChat' and webchat == 1:
 
                         # Construir la URL del endpoint con el user_id correspondiente
-                        url = f'https://{apirest_url}/send_inactivity_message/{valuetype}'
+                        url = f'{prefix_url}://{apirest_url}/send_inactivity_message/{valuetype}'
                         
                         # Definir el payload con el mensaje de inactividad personalizado
                         payload = {
