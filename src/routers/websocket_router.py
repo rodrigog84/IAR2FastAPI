@@ -93,7 +93,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await manager.send_message_to_user(f"{respuesta}", user_id)
     except WebSocketDisconnect:
         manager.disconnect(user_id)
-        await manager.broadcast(f"Usuario {user_id} se ha desconectado")
+        #await manager.broadcast(f"Usuario {user_id} se ha desconectado")
 
 
 
