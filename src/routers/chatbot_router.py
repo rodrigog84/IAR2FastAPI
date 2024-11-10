@@ -41,6 +41,7 @@ from src.repository import faq
 from src.repository import utils
 from src.repository import pdf
 from src.repository import api
+from src.repository import oirst
 
 import os
 import openai
@@ -61,7 +62,7 @@ class WebhookRequestData(BaseModel):
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 @chatbot_router.post('/send_message/')
 def send_message(messagedata: MessageApi):
-    
+    #print(messagedata)
     derivacion = 0
     responsecustomer = ''
     if messagedata.solution == 'Reclamos':     
@@ -71,7 +72,9 @@ def send_message(messagedata: MessageApi):
     elif messagedata.solution == 'PDF': 
         response = pdf.send_message(messagedata)
     elif messagedata.solution == 'API': 
-        response = api.send_message(messagedata)        
+        response = api.send_message(messagedata)    
+    elif messagedata.solution == 'OIRS_T': 
+        response = oirst.send_message(messagedata)               
     else:
         responsecustomer = 'Parametros Incorrectos'
 

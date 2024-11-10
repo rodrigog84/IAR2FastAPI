@@ -123,3 +123,10 @@ ROW_FORMAT=DYNAMIC
 ;
 
 
+
+/***************************************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF','API','OIRS_T') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;
+
+	
