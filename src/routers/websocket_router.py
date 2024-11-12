@@ -63,11 +63,11 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             message_data = json.loads(data)
             message = message_data["message"]
-            print(user_id)
-            print(message)
+            #print(user_id)
+            #print(message)
 
             url = f'{prefix_url}://{apirest_url}/send_message/'
-            print(url)
+            #print(url)
             payload = {
                 "message": message,
                 "typemessage": "WebChat",
@@ -81,7 +81,7 @@ async def websocket_endpoint(websocket: WebSocket):
             respuesta = ''
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=headers, json=payload)
-                print(response.json())  # Imprime la respuesta recibida en JSON
+                #print(response.json())  # Imprime la respuesta recibida en JSON
                 # Obtén el valor de "respuesta"
                 # Accede al contenido JSON de la respuesta
                 respuesta_data = response.json()  # Convierte la respuesta en un diccionario                

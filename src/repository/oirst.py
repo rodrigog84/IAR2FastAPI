@@ -249,6 +249,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     global qa_chains
 
     llm_name = os.environ["LLM"]   
+    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -323,7 +324,110 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     question = messagedata.message 
     codempresa = messagedata.enterprise
 
-    
+    # Prompt simplificado para obtener solo la respuesta al usuario
+    prompt_respuesta = promp1
+
+    # Prompt para determinar si la conversación ha terminado
+    prompt_fin_conversacion = """Dado el siguiente mensaje de un asistente virtual, indica si la conversación ha terminado o no. Una forma de saber es si en el mensaje se indicó el plazo de respuesta.  Responde con "1" si la conversación terminó y con "0" si continúa:
+    "{mensaje_respuesta}" """
+
+
+    # Crear la plantilla principal solo para la respuesta
+    principal_prompt_respuesta = PromptTemplate(
+        input_variables=["chat_history", "human_input"],
+        template=prompt_respuesta + """
+
+        {chat_history}
+        Human: {human_input}
+        Chatbot:"""
+    )    
+
+
+    # Cadena para la respuesta principal del usuario
+    chain_respuesta = LLMChain(
+        llm=llm,
+        prompt=principal_prompt_respuesta,
+        memory=memory
+    )
+
+    question = messagedata.message
+
+
+
+    try:
+        # Generar respuesta principal
+        response = chain_respuesta.predict(human_input=question)
+        print("Respuesta del chatbot:", response)
+
+        # Ahora generamos la segunda pregunta para determinar si la conversación terminó
+        # Creamos un nuevo prompt con la respuesta que ya se generó
+        prompt_terminacion = PromptTemplate(
+            input_variables=["mensaje_respuesta"],
+            template=prompt_fin_conversacion
+        )
+
+        # Llamamos a ChatGPT solo para verificar si la conversación terminó
+        chain_terminacion = LLMChain(
+            llm=llm,
+            prompt=prompt_terminacion
+        )
+
+        # Obtener si la conversación ha terminado
+        terminado = chain_terminacion.predict(mensaje_respuesta=response)
+        print("Terminación de la conversación:", terminado)
+
+        # Convertir la respuesta de terminación a True o False según el valor recibido
+        conversation_finished = True if terminado.strip() == "1" else False
+
+        # Definir código de seguimiento
+        tracking_code = "ABC123" if conversation_finished else ""
+
+        # Crear el diccionario final de respuesta en formato JSON
+        response_json = {
+            "response": response,
+            "conversation_finished": conversation_finished,
+            "tracking_code": tracking_code
+        }
+
+        #print("Respuesta JSON:", response_json)
+
+    except ValueError as e:
+        print(f"Error de valor: {e}")
+    except Exception as e:
+        print(f"Error inesperado: {e}")
+
+
+
+    # Guardado en la base de datos
+    if response:
+        response_type_response = 'Interaccion'
+        typeresponse = response_type_response
+        responsecustomer = response
+
+        if conversation_finished:
+                typeresponse =  'Cierre Conversación'
+                finish = 1
+        else:
+                typeresponse =  'Interaccion'
+                finish = 0
+
+
+
+        sqlresponse =  "UPDATE iar2_captura SET identification = '', messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s', derivacion = '%s', idinteraction = '%d'  WHERE id = %d" % (sqlescape(response), sqlescape(responsecustomer), typeresponse, 'NO', id_interaction, idrow)
+        mycursor.execute(sqlresponse)   
+        miConexion.commit()
+
+        sqlresponse =  "UPDATE iar2_interaction SET lastmessage = '%s', lastmessageresponsecustomer = '%s', lastyperesponse = '%s', finish = %d WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, finish, id_interaction)
+        mycursor.execute(sqlresponse)   
+        miConexion.commit()
+    else:
+        print("No se pudo obtener una respuesta del chatbot.")
+
+
+
+
+    ### RESPUESTA INTERNA 
+    '''
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
 
@@ -334,19 +438,10 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     response = result["answer"]
     typeresponse = 'Interaccion'
     responsecustomer = response
+    '''
 
-    # response = ''
-    # GUARDADO RESPUESTA
-    sqlresponse =  "UPDATE iar2_captura SET identification = '', messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s', derivacion = '%s', idinteraction = '%d'  WHERE id = %d" % (sqlescape(response), sqlescape(responsecustomer), typeresponse, 'NO', id_interaction, idrow)
-    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
-    mycursor.execute(sqlresponse)   
-    miConexion.commit()
-
-    sqlresponse =  "UPDATE iar2_interaction SET  lastmessage =  '%s', lastmessageresponsecustomer =  '%s', lastyperesponse =  '%s' WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, id_interaction)
-    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
-    mycursor.execute(sqlresponse)   
-    miConexion.commit()    
     #return result
+    #return ''
     return responsecustomer
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
@@ -457,7 +552,7 @@ def send_message(messagedata: MessageApi):
     if tiene_mensaje == 0:
         #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
         sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo','NO')
+        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
         mycursor.execute(sql, val)   
         miConexion.commit()
 
