@@ -292,9 +292,6 @@ def process_message():
         id_interaction = row_interaction[3]
         codempresa = row_interaction[4]
 
-        print(id_interaction)
-        print(typemessage)
-
         mycursor2 = miConexion.cursor()
         #EVALUA LOS MENSAJES EXISTENTES DE LA INTERACCION ACTUAL
         mycursor2.execute("""SELECT      identification
@@ -474,7 +471,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     try:
         # Generar respuesta principal
         response = chain_respuesta.predict(human_input=question)
-        print("Respuesta del chatbot:", response)
+        #print("Respuesta del chatbot:", response)
 
         # Ahora generamos la segunda pregunta para determinar si la conversación terminó
         # Creamos un nuevo prompt con la respuesta que ya se generó
@@ -491,7 +488,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
         # Obtener si la conversación ha terminado
         terminado = chain_terminacion.predict(mensaje_respuesta=response)
-        print("Terminación de la conversación:", terminado)
+        #print("Terminación de la conversación:", terminado)
 
         # Convertir la respuesta de terminación a True o False según el valor recibido
         conversation_finished = True if terminado.strip() == "1" else False

@@ -141,5 +141,15 @@ ALTER TABLE `iar2_interaction`
 	ADD COLUMN `internalresponse` TEXT NULL DEFAULT NULL AFTER `lastmessageresponsecustomer`,
 	CHANGE COLUMN `lastyperesponse` `lastyperesponse` TEXT NOT NULL COLLATE 'utf8mb4_general_ci' AFTER `internalresponse`,
 	ADD COLUMN `derivationarea` VARCHAR(50) NOT NULL DEFAULT '0' AFTER `derivation`;
-	
-		
+
+CREATE TABLE `iar2_files_oirs` (
+	`id` INT(11) NOT NULL AUTO_INCREMENT,
+	`identerprise` INT(11) NULL DEFAULT '0',
+	`file_path` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	`derivacion` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	PRIMARY KEY (`id`) USING BTREE
+)
+COLLATE='utf8mb4_general_ci'
+ENGINE=InnoDB
+ROW_FORMAT=DYNAMIC
+;
