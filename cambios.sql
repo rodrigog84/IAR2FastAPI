@@ -130,3 +130,16 @@ ALTER TABLE `iar2_empresas`
 	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF','API','OIRS_T') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;
 
 	
+
+/***************************************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `prompt2` TEXT NULL DEFAULT NULL AFTER `promp1`;
+
+
+ALTER TABLE `iar2_interaction`
+	ADD COLUMN `internalresponse` TEXT NULL DEFAULT NULL AFTER `lastmessageresponsecustomer`,
+	CHANGE COLUMN `lastyperesponse` `lastyperesponse` TEXT NOT NULL COLLATE 'utf8mb4_general_ci' AFTER `internalresponse`,
+	ADD COLUMN `derivationarea` VARCHAR(50) NOT NULL DEFAULT '0' AFTER `derivation`;
+	
+		

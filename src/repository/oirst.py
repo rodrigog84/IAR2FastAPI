@@ -95,10 +95,12 @@ def initialize_qa_chain(codempresa):
                                     , derivation_message
                                     , chunk_size
                                     , chunk_overlap
+                                    , prompt2                     
                         FROM iar2_empresas WHERE typechatbot = '%s' AND codempresa = '%s'""" % (solution,codempresa))
     
     idempresa = 0
     promp1 = ''
+    prompt2 = ''
     var_chunk_size = 0
     var_chunk_overlap = 0
     for row_empresa in mycursor.fetchall():
@@ -113,6 +115,7 @@ def initialize_qa_chain(codempresa):
         derivation_message = row_empresa[9]     
         var_chunk_size = row_empresa[10]     
         var_chunk_overlap = row_empresa[10]     
+        prompt2 = row_empresa[11]
 
 
     promp_original = promp1
@@ -129,18 +132,20 @@ def initialize_qa_chain(codempresa):
     ############################################################################################################
 
     # Obtener la lista de archivos asociados a la empresa
-    mycursor.execute("""SELECT file_path FROM iar2_files WHERE identerprise = '%d'""" % (idempresa))
-    file_paths = [row[0] for row in mycursor.fetchall()]    
+    mycursor.execute("""SELECT file_path, derivacion FROM iar2_files_oirs WHERE identerprise = '%d'""" % (idempresa))
+    #file_paths = [row[0] for row in mycursor.fetchall()]    
 
     #print(codempresa)
     #print(idempresa)
     #print(file_paths)
     all_docs = []
-    for file_relative_path in file_paths:
+    for file_relative_path, derivacion in mycursor.fetchall():
         file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
-        #print(file_relative_path_full)
+        print(file_relative_path_full)
         loader = PyPDFLoader(file_relative_path_full)
         docs = loader.load()
+        for doc in docs:
+            doc.metadata["derivacion"] = derivacion  # Asociar derivacion en los metadatos
         #print(docs[0].page_content[:100])
         all_docs.extend(docs)   
 
@@ -177,9 +182,9 @@ def initialize_qa_chain(codempresa):
     )    
     
     
-    
+    f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
   
-    template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
+    template = str(prompt2) + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
     Helpful Answer:"""
@@ -195,7 +200,7 @@ def initialize_qa_chain(codempresa):
                     retriever=vectordb.as_retriever(),
                     #memory=memory,
                     get_chat_history=lambda h:h,
-                    return_source_documents=False,
+                    return_source_documents=True,
                     combine_docs_chain_kwargs=chain_type_kwargs)     
     
     qa_chains[codempresa] = qa_chain
@@ -242,6 +247,118 @@ def limpiar_registro(messagedata: MessageApi, idempresa):
 
     miConexion.commit()
     return 'Limpieza Realizada'
+
+
+
+
+def process_message():
+
+    global qa_chains
+    apirest_url = os.environ["IP_APIREST"]
+    prefix_url = os.environ["PREFIX_APIREST"]
+
+   
+
+    llm_name = os.environ["LLM"]   
+    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)    
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      DISTINCT i.typemessage
+                                    , i.valuetype
+                                    , i.identerprise 
+                                    , i.id
+                                    , e.codempresa
+                        FROM        iar2_interaction i
+                        INNER JOIN  iar2_empresas e on i.identerprise = e.id 
+                        WHERE       i.finish = 1
+                        AND         internalresponse = ''
+                        AND         derivationarea = ''
+                        AND         e.typechatbot = '%s'
+                        ORDER BY    id desc
+                        LIMIT       1""" % (solution))
+
+    reclamos = []
+    registro = []
+    for row_interaction in mycursor.fetchall():
+
+        typemessage = row_interaction[0]
+        valuetype = row_interaction[1]
+        identerprise = row_interaction[2]
+        id_interaction = row_interaction[3]
+        codempresa = row_interaction[4]
+
+        print(id_interaction)
+        print(typemessage)
+
+        mycursor2 = miConexion.cursor()
+        #EVALUA LOS MENSAJES EXISTENTES DE LA INTERACCION ACTUAL
+        mycursor2.execute("""SELECT      identification
+                                        , typemessage
+                                        , valuetype
+                                        , ifnull(message,'') as message 
+                                        , messageresponseia
+                                        , ifnull(messageresponsecustomer,'') as messageresponsecustomer
+                                        , classification
+                                        , sla
+                                        , isclaim
+                                        , typeresponse
+                                        , derivacion 
+                            FROM        iar2_captura 
+                            WHERE       idinteraction = '%s' 
+                            AND         typeresponse != 'Saludo'
+                            ORDER BY    created_at """ % (id_interaction))
+        
+        messages = []
+        # AGREGA CADA MENSAJE PREVIO A MEMORIA, PARA QUE EL CHAT TENGA MEMORIA DE LA CONVERSACIÓN PREVIA
+        for row in mycursor2.fetchall():
+
+            #messages.append((f'Human: {row[3]}', f'Assistant: {row[5]}'))
+            if row[3] is not None and row[3] != '' and row[5] is not None and row[5] != '':
+                messages.append((row[3],row[5]))
+
+            memory.save_context({"input": row[3]}, 
+                                {"output": row[5]})
+                    
+        #return messages
+        memory.load_memory_variables({})              
+       
+        if codempresa not in qa_chains:
+            initialize_qa_chain(codempresa)
+
+        qa_chain = qa_chains[codempresa]
+        chat_history = []
+        question = ''
+        result_int = qa_chain({"question": question, "chat_history": messages})              
+        #print('respuesta rag')
+        #print(result_int['answer'])
+        #print(result_int['source_documents'])
+        internal_response = result_int['answer']
+        if "source_documents" in result_int:
+            derivaciones_utilizadas = set(doc.metadata["derivacion"] for doc in result_int["source_documents"])
+
+        # Determinar el departamento correspondiente (puede haber varios)
+        # Aquí decides la lógica de derivación (por ejemplo, el departamento con mayor cantidad de fragmentos)
+        #derivacion_destino = max(derivaciones_utilizadas, key=lambda d: derivaciones_utilizadas.count(d))
+
+
+        #print(derivaciones_utilizadas)
+        derivacion_final = ''
+        for derivacion in derivaciones_utilizadas:
+            #print(derivacion)
+            derivacion_final = derivacion   
+
+
+        sqlresponse =  "UPDATE iar2_interaction SET internalresponse = '%s', derivationarea = '%s' WHERE id = %d" % (sqlescape(internal_response), derivacion_final, id_interaction)
+        mycursor.execute(sqlresponse)       
+        miConexion.commit()
+
+    miConexion.close()
+    return {'data' : 'Conversaciones Finalizadas'}
 
 def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
@@ -407,9 +524,39 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
         if conversation_finished:
                 typeresponse =  'Cierre Conversación'
                 finish = 1
+                derivacion_final = ''
+                internal_response = ''
+
+                '''
+                if codempresa not in qa_chains:
+                    initialize_qa_chain(codempresa)
+
+                qa_chain = qa_chains[codempresa]
+                chat_history = []
+                result_int = qa_chain({"question": question, "chat_history": messages})              
+                print('respuesta rag')
+                print(result_int['answer'])
+                print(result_int['source_documents'])
+                internal_response = result_int['answer']
+                if "source_documents" in result_int:
+                    derivaciones_utilizadas = set(doc.metadata["derivacion"] for doc in result_int["source_documents"])
+
+                # Determinar el departamento correspondiente (puede haber varios)
+                # Aquí decides la lógica de derivación (por ejemplo, el departamento con mayor cantidad de fragmentos)
+                #derivacion_destino = max(derivaciones_utilizadas, key=lambda d: derivaciones_utilizadas.count(d))
+
+
+                print(derivaciones_utilizadas)
+                derivacion_final = ''
+                for derivacion in derivaciones_utilizadas:
+                    print(derivacion)
+                    derivacion_final = derivacion
+                '''
         else:
                 typeresponse =  'Interaccion'
                 finish = 0
+                derivacion_final = ''
+                internal_response = ''
 
 
 
@@ -417,8 +564,8 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
         mycursor.execute(sqlresponse)   
         miConexion.commit()
 
-        sqlresponse =  "UPDATE iar2_interaction SET lastmessage = '%s', lastmessageresponsecustomer = '%s', lastyperesponse = '%s', finish = %d WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, finish, id_interaction)
-        mycursor.execute(sqlresponse)   
+        sqlresponse =  "UPDATE iar2_interaction SET lastmessage = '%s', lastmessageresponsecustomer = '%s', lastyperesponse = '%s', finish = %d, internalresponse = '%s', derivationarea = '%s' WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, finish, internal_response, derivacion_final, id_interaction)
+        mycursor.execute(sqlresponse)       
         miConexion.commit()
     else:
         print("No se pudo obtener una respuesta del chatbot.")
@@ -428,12 +575,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     ### RESPUESTA INTERNA 
     '''
-    if codempresa not in qa_chains:
-        initialize_qa_chain(codempresa)
 
-    qa_chain = qa_chains[codempresa]
-    chat_history = []
-    result = qa_chain({"question": question, "chat_history": messages})
     
     response = result["answer"]
     typeresponse = 'Interaccion'
@@ -620,8 +762,6 @@ def finish_message():
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
 
-
-
     #BUSCA LA EMPRESA
     mycursor.execute("""SELECT      DISTINCT i.typemessage
                                     , i.valuetype
@@ -629,7 +769,7 @@ def finish_message():
                         FROM        iar2_interaction i
                         INNER JOIN  iar2_empresas e on i.identerprise = e.id 
                         WHERE       i.finish = 0
-                        AND         e.typechatbot = 'FAQ'""")
+                        AND         e.typechatbot = '%s'""" % (solution))
     #mycursor.execute("SELECT DISTINCT typemessage, valuetype, identerprise FROM iar2_captura WHERE created_at BETWEEN DATE_ADD(NOW(), INTERVAL -3 DAY) AND NOW()")
 
     typemessage = ''

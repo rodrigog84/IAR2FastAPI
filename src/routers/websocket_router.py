@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Dict
 import json
 import httpx
+import asyncio
+
 
 import os
 
@@ -15,6 +17,30 @@ import requests
 # Router para WebSocket
 websocket_router = APIRouter()
 
+
+# Función para hacer fetch con reintentos (corregida para ser asíncrona)
+async def fetch_with_retries(url, headers, payload, max_retries=3):
+    retries = 0
+    while retries < max_retries:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                #print('respuesta websocket: ')
+                #print(response)
+                response.raise_for_status()  # Verifica si el estado es 2xx
+                return response.json()
+        except httpx.RequestError as exc:
+            print(f"Request error: {exc}")
+            # Muestra detalles de la URL y payload para diagnósticos
+            print(f"Request error to {url} with payload {payload} (Retry {retries + 1}/{max_retries}): {exc}")
+               
+        except httpx.HTTPStatusError as exc:
+            print(f"HTTP error: {exc}")
+            print(f"HTTP error {exc.response.status_code} for URL {url} with payload {payload}: {exc}")
+            #print("Traceback:", traceback.format_exc())            
+        retries += 1
+        await asyncio.sleep(2 ** retries)  # Exponencial backoff
+    return None  # Devuelve None si los reintentos fallan
 
 # Clase para gestionar las conexiones con user_id
 class ConnectionManager:
@@ -36,7 +62,10 @@ class ConnectionManager:
         for connection in self.active_connections.values():
             await connection.send_text(message)
 
+
+
 manager = ConnectionManager()
+
 
 @websocket_router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
@@ -63,9 +92,10 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             message_data = json.loads(data)
             message = message_data["message"]
-            #print(user_id)
+            print(user_id)
             #print(message)
 
+            
             url = f'{prefix_url}://{apirest_url}/send_message/'
             #print(url)
             payload = {
@@ -79,6 +109,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 'Content-Type': 'application/json'
             }
             respuesta = ''
+            respuesta_data = await fetch_with_retries(url, headers, payload)
+
+            if respuesta_data:
+                respuesta = respuesta_data.get("respuesta", "")
+                print('Respuesta websocket user id : ' + user_id + ' , respuesta : ' + respuesta)
+                if respuesta:
+                    await manager.send_message_to_user(respuesta, user_id)            
+           
+            '''
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=headers, json=payload)
                 #print(response.json())  # Imprime la respuesta recibida en JSON
@@ -86,11 +125,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Accede al contenido JSON de la respuesta
                 respuesta_data = response.json()  # Convierte la respuesta en un diccionario                
                 respuesta = respuesta_data.get("respuesta")          
-                print(respuesta)      
+                print('Respuesta websocket user id : ' + user_id + ' , respuesta : ' + respuesta)      
+            
 
             # Enviar de vuelta el mensaje o algún procesamiento
             if respuesta != '':
                 await manager.send_message_to_user(f"{respuesta}", user_id)
+            '''
     except WebSocketDisconnect:
         manager.disconnect(user_id)
         #await manager.broadcast(f"Usuario {user_id} se ha desconectado")

@@ -106,9 +106,15 @@ def finish_message():
     message = claim.finish_message()
     message = faq.finish_message()
     message = pdf.finish_message()
+    message = oirst.finish_message()
     return {'data' : message}
 
 
+### ENVIA MENSAJE DE FINALIZACION DE CONVERSACION
+@chatbot_router.get('/process_message/')
+def process_message():
+    message = oirst.process_message()
+    return {'data' : message}
 
 
 ### ENVIA MENSAJE DE VUELTA
