@@ -334,6 +334,7 @@ def process_message():
         #print('respuesta rag')
         #print(result_int['answer'])
         #print(result_int['source_documents'])
+        print(result_int)
         internal_response = result_int['answer']
         if "source_documents" in result_int:
             derivaciones_utilizadas = set(doc.metadata["derivacion"] for doc in result_int["source_documents"])
@@ -581,7 +582,8 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     #return result
     #return ''
-    return responsecustomer
+    return {'respuesta': responsecustomer,
+            'finish' : finish}
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 def send_message(messagedata: MessageApi):
@@ -661,7 +663,7 @@ def send_message(messagedata: MessageApi):
          resp = limpiar_registro(messagedata, idempresa)
 
          return {'respuesta': resp,
-                'derivacion' : 0} 
+                'finish' : 0} 
  
 
   
@@ -713,8 +715,8 @@ def send_message(messagedata: MessageApi):
     ## CASO 5: COMUNICACION CON CHATBOT/ ESTO ES CUANDO EL MENSAJE NO ES DE BIENVENIDA, NI TAMPOCO LO CONTESTA UN HUMANO
     responsecustomer = chatbot_message(messagedata, id_interaction, idrow,  promp1)
 
-    return {'respuesta': responsecustomer,
-            'derivacion' : 0}
+    return responsecustomer
+           
 
 
 def get_messages(enterprise: str):

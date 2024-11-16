@@ -113,10 +113,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if respuesta_data:
                 respuesta = respuesta_data.get("respuesta", "")
-                print('Respuesta websocket user id : ' + user_id + ' , respuesta : ' + respuesta)
+                finish = respuesta_data.get("finish", "")
+                #print('Respuesta websocket user id : ' + user_id + ' , respuesta : ' + respuesta)
                 if respuesta:
                     await manager.send_message_to_user(respuesta, user_id)            
-           
+          
+                if finish == 1:
+                    await manager.send_message_to_user('Fin', user_id)                       
             '''
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=headers, json=payload)

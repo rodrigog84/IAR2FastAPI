@@ -83,8 +83,13 @@ def send_message(messagedata: MessageApi):
         return {'respuesta': responsecustomer,
                 'derivacion' : derivacion}
     else:
-        return {'respuesta': response['respuesta'],
-                'derivacion' : response['derivacion']}
+
+        if messagedata.solution == 'OIRS_T': 
+            return {'respuesta': response['respuesta'],
+                    'finish' : response['finish']}
+        else:
+            return {'respuesta': response['respuesta'],
+                    'derivacion' : response['derivacion']}
 
 
 
