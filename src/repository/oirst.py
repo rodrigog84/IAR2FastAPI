@@ -334,7 +334,7 @@ def process_message():
         #print('respuesta rag')
         #print(result_int['answer'])
         #print(result_int['source_documents'])
-        print(result_int)
+        #print(result_int)
         internal_response = result_int['answer']
         if "source_documents" in result_int:
             derivaciones_utilizadas = set(doc.metadata["derivacion"] for doc in result_int["source_documents"])
@@ -349,6 +349,39 @@ def process_message():
         for derivacion in derivaciones_utilizadas:
             #print(derivacion)
             derivacion_final = derivacion   
+
+
+
+        # Prompt para determinar si encontró respuesta
+        prompt_informacion = """Dado el siguiente mensaje de un asistente virtual, indica si encontró respuesta a la pregunta o no. Una forma de saber es si en el mensaje indica que no encontró información.  Responde con "1" si encontró información y con "0" si no:
+        "{mensaje_respuesta}" """
+
+
+        prompt_informacion_final = PromptTemplate(
+            input_variables=["mensaje_respuesta"],
+            template=prompt_informacion
+        )
+
+        # Llamamos a ChatGPT solo para verificar si la conversación terminó
+        chain_informacion = LLMChain(
+            llm=llm,
+            prompt=prompt_informacion_final
+        )
+
+        # Obtener si la conversación ha terminado
+        informacion = chain_informacion.predict(mensaje_respuesta=internal_response)
+        #print("Encuentra Informacion:", informacion)
+
+        # Convertir la respuesta de terminación a True o False según el valor recibido
+        informacion_encontrada = True if informacion.strip() == "1" else False
+
+
+        if informacion_encontrada:
+            derivacion_final = derivacion_final
+        else:
+            derivacion_final = 'Secretaría Municipal'
+
+
 
 
         sqlresponse =  "UPDATE iar2_interaction SET internalresponse = '%s', derivationarea = '%s' WHERE id = %d" % (sqlescape(internal_response), derivacion_final, id_interaction)
