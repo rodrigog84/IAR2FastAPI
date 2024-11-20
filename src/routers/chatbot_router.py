@@ -42,6 +42,7 @@ from src.repository import utils
 from src.repository import pdf
 from src.repository import api
 from src.repository import oirst
+from src.repository import html
 
 import os
 import openai
@@ -74,7 +75,9 @@ def send_message(messagedata: MessageApi):
     elif messagedata.solution == 'API': 
         response = api.send_message(messagedata)    
     elif messagedata.solution == 'OIRS_T': 
-        response = oirst.send_message(messagedata)               
+        response = oirst.send_message(messagedata)           
+    elif messagedata.solution == 'HTML': 
+        response = html.send_message(messagedata)                      
     else:
         responsecustomer = 'Parametros Incorrectos'
 

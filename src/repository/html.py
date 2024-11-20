@@ -33,6 +33,11 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 
+from langchain.document_loaders import PyPDFLoader
+from langchain.document_loaders import WebBaseLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+
 import MySQLdb
 
 #AGREGA CARACTERES DE ESCAPE EN SQL
@@ -59,6 +64,7 @@ import tiktoken
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 
+import shutil
 
 # Diccionario global para almacenar las instancias de qa_chain
 qa_chains = {}
@@ -87,10 +93,14 @@ def initialize_qa_chain(codempresa):
                                     , time_max
                                     , derivation
                                     , derivation_message
-                        FROM iar2_empresas WHERE typechatbot = 'FAQ' AND codempresa = '%s'""" % (codempresa))
+                                    , chunk_size
+                                    , chunk_overlap
+                        FROM iar2_empresas WHERE typechatbot = 'HTML' AND codempresa = '%s'""" % (codempresa))
     
     idempresa = 0
     promp1 = ''
+    var_chunk_size = 0
+    var_chunk_overlap = 0
     for row_empresa in mycursor.fetchall():
         idempresa = row_empresa[0]
         promp1 = row_empresa[2]
@@ -101,37 +111,81 @@ def initialize_qa_chain(codempresa):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]     
+        var_chunk_size = row_empresa[10]     
+        var_chunk_overlap = row_empresa[10]     
 
 
     promp_original = promp1
+    
+    if var_chunk_size == 0:
+        var_chunk_size = 1500
+
+    if var_chunk_overlap == 0:
+        var_chunk_overlap = 150
+
+
+    # DEFINE PREFIJO RUTA
+    prefijo = os.environ["PREFIJO_RUTA"] 
     ############################################################################################################
-    ##   OBTENER PREGUNTAS FRECUENTES
-    mycursor.execute("""SELECT  question
-                            , answer
-                    FROM    iar2_faq
-                    WHERE   identerprise = '%d' 
-                    ORDER BY id """ % (idempresa))          
 
-    ## AGREGAR CONTROL DE ERRORES EN QUE INICIALICE SÓLO SI LA EMPRESA CORRESPONDE (EJ, AL PREGUNTAR POR FAQ EN UNA EMPRESA QUE NO ES FAQ)
+    # Obtener la lista de archivos asociados a la empresa
+    mycursor.execute("""SELECT url_path FROM iar2_url WHERE identerprise = '%d'""" % (idempresa))
+    url_paths = [row[0] for row in mycursor.fetchall()]    
 
-
-    texts = []
-    question_text = ""
-    for questions in mycursor.fetchall():
-        question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
-        texts.append(question_text)
+    #print(codempresa)
+    #print(idempresa)
+    #print(file_paths)
+    all_docs = []
+    for url_relative_path in url_paths:
+        loader = WebBaseLoader(url_relative_path)
+        docs = loader.load()
+        #print(docs[0].page_content[:100])
+        all_docs.extend(docs)   
 
     
-    vectordb = Chroma.from_texts(texts, embedding=embedding)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size = var_chunk_size,
+        chunk_overlap = var_chunk_overlap
+    )    
+
+    #print(text_splitter)
+
+    splits = text_splitter.split_documents(all_docs)
+
+    persist_directory = f'{prefijo}src/routers/filesrag/{idempresa}/chroma/'
+    
+    # Elimina el directorio y todo su contenido
+
+    # Verificar si el directorio existe antes de eliminarlo
+    if os.path.exists(persist_directory):
+        shutil.rmtree(persist_directory)
 
 
+    # Crear el directorio (y cualquier directorio intermedio necesario)
+    os.makedirs(persist_directory, exist_ok=True)
+    
+    #print(persist_directory)
+    
+    #AQUI FALLA CON PM2
+    
+    vectordb = Chroma.from_documents(
+        documents=splits,
+        embedding=embedding,
+        persist_directory=persist_directory
+    )    
+    
+    
+    
+  
     template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
     Helpful Answer:"""
     QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
+    #print(template)
 
+    
     chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
     # Run chain
     #RetrievalQA.from_chain_type sirve para hacer solo la consulta
@@ -143,20 +197,21 @@ def initialize_qa_chain(codempresa):
                     get_chat_history=lambda h:h,
                     return_source_documents=False,
                     combine_docs_chain_kwargs=chain_type_kwargs)     
-
+    
     qa_chains[codempresa] = qa_chain
+    
 
 #INICIALIZA CADA UNO DE LOS RAG EXISTENTES
 def initialize_all_qa_chains():
     miConexion = MySQLdb.connect(host=hostMysql, user=userMysql, passwd=passwordMysql, db=dbMysql)
     mycursor = miConexion.cursor()
-    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'FAQ'")
+    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'HTML'")
     for (codempresa,) in mycursor.fetchall():
         initialize_qa_chain(codempresa)
 
 
-# Inicializar todas las empresas al inicio
-initialize_all_qa_chains()
+# Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
+initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -458,8 +513,8 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
-    qa_chain = qa_chains[codempresa]
 
+    qa_chain = qa_chains[codempresa]
     chat_history = []
     result = qa_chain({"question": question, "chat_history": messages})
     
@@ -515,7 +570,7 @@ def send_message(messagedata: MessageApi):
                                     		 ELSE 0
                                       END fuera_time_max   
                                     , whatsappapi                          
-                        FROM iar2_empresas WHERE typechatbot = 'FAQ' AND codempresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE typechatbot = 'HTML' AND codempresa = '%s'""" % (messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''
@@ -580,16 +635,31 @@ def send_message(messagedata: MessageApi):
 
 
     ## CASO 2: INTERACCION NUEVA - SALUDO
-    if tiene_mensaje == 0:
-        #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
-        if fuera_time_min == 1 or fuera_time_max == 1: 
-            responsecustomer = out_time_message(messagedata)
-        else:
-            #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
-            responsecustomer = greeting_message(messagedata)
-            
-        return {'respuesta': responsecustomer,
-                'derivacion' : 0}
+    # EN WHATSAPP Y RRSS HAY UN MENSAJE DE BIENVENIDA
+    if messagedata.typemessage != 'WebChat':
+
+        if tiene_mensaje == 0:
+            #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
+            if fuera_time_min == 1 or fuera_time_max == 1: 
+                responsecustomer = out_time_message(messagedata)
+            else:
+                #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+                responsecustomer = greeting_message(messagedata)
+                
+            return {'respuesta': responsecustomer,
+                    'derivacion' : 0}
+
+
+    else:
+
+        #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+        sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
+        mycursor.execute(sql, val)   
+        miConexion.commit()
+
+        id_interaction = mycursor.lastrowid
+
 
     # GUARDADO MENSAJE ENTRANTE
     sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise, idinteraction) VALUES (%s, %s, %s, %s, %s)"
@@ -672,6 +742,7 @@ def get_messages(enterprise: str):
     miConexion.close()
     return reclamos
 
+
 def finish_message():
 
 
@@ -704,6 +775,7 @@ def finish_message():
     reclamos = []
     registro = []
     for row_interaction in mycursor.fetchall():
+
         typemessage = row_interaction[0]
         valuetype = row_interaction[1]
         identerprise = row_interaction[2]
@@ -723,8 +795,8 @@ def finish_message():
                                         ,e.numberidwsapi
                                         ,e.jwtokenwsapi    
                                         ,e.whatsapp
-                                        ,e.whatsappapi   
-                                        ,e.webchat                   
+                                        ,e.whatsappapi    
+                                        ,e.webchat                     
                             FROM        iar2_interaction c  
                             INNER JOIN  iar2_empresas e  on c.identerprise = e.id
                             WHERE 	    finish = 0
@@ -743,8 +815,8 @@ def finish_message():
                 numberidwsapi = row_register[7]
                 jwtokenwsapi = row_register[8]     
                 whatsapp = row_register[9]
-                whatsappapi = row_register[10]                
-                webchat = row_register[11]     
+                whatsappapi = row_register[10]  
+                webchat = row_register[11]                  
                 
                 mycursor3 = miConexion.cursor()
 
@@ -807,7 +879,7 @@ def finish_message():
                                 print("Error al enviar el mensaje de inactividad:", response.status_code, response.text)
                         except httpx.RequestError as exc:
                             print(f"Error de conexión: {exc}")
-
+                    
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
                     val = (typemessage, valuetype, 'Alerta de cierre de sesion', 'Alerta Cierre', identerprise)
                     mycursor3.execute(sql, val)   
@@ -852,7 +924,7 @@ def finish_message():
                         'Authorization': 'Bearer ' + jwtokenwsapi
                         }
 
-                        response = requests.request("POST", url, headers=headers, data=payload) 
+                        response = requests.request("POST", url, headers=headers, data=payload)   
 
                     elif typemessage == 'WebChat' and webchat == 1:
 
@@ -877,7 +949,6 @@ def finish_message():
                                 print("Error al enviar el mensaje de inactividad:", response.status_code, response.text)
                         except httpx.RequestError as exc:
                             print(f"Error de conexión: {exc}")
-
 
                     sql = "INSERT INTO iar2_captura (typemessage, valuetype, messageresponsecustomer, typeresponse, identerprise) VALUES (%s, %s, %s, %s, %s)"
                     val = (typemessage, valuetype, 'Cierre de sesion definitivo', 'Cierre Conversación', identerprise)
