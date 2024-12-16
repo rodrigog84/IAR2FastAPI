@@ -579,17 +579,33 @@ def send_message(messagedata: MessageApi):
         derivation = row_interaction[1]
 
 
+
     ## CASO 2: INTERACCION NUEVA - SALUDO
-    if tiene_mensaje == 0:
-        #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
-        if fuera_time_min == 1 or fuera_time_max == 1: 
-            responsecustomer = out_time_message(messagedata)
-        else:
-            #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
-            responsecustomer = greeting_message(messagedata)
-            
-        return {'respuesta': responsecustomer,
-                'derivacion' : 0}
+    # EN WHATSAPP Y RRSS HAY UN MENSAJE DE BIENVENIDA
+    if messagedata.typemessage != 'WebChat':
+
+        if tiene_mensaje == 0:
+            #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
+            if fuera_time_min == 1 or fuera_time_max == 1: 
+                responsecustomer = out_time_message(messagedata)
+            else:
+                #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+                responsecustomer = greeting_message(messagedata)
+                
+            return {'respuesta': responsecustomer,
+                    'derivacion' : 0}
+
+
+    else:
+
+        #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+        sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
+        mycursor.execute(sql, val)   
+        miConexion.commit()
+
+        id_interaction = mycursor.lastrowid
+
 
     # GUARDADO MENSAJE ENTRANTE
     sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise, idinteraction) VALUES (%s, %s, %s, %s, %s)"
