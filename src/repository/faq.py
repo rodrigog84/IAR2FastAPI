@@ -598,13 +598,14 @@ def send_message(messagedata: MessageApi):
 
     else:
 
-        #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
-        sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
-        mycursor.execute(sql, val)   
-        miConexion.commit()
+        if tiene_mensaje == 0:
+            #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+            sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
+            mycursor.execute(sql, val)   
+            miConexion.commit()
 
-        id_interaction = mycursor.lastrowid
+            id_interaction = mycursor.lastrowid
 
 
     # GUARDADO MENSAJE ENTRANTE
