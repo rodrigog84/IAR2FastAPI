@@ -429,7 +429,7 @@ def initialize_all_qa_chains():
 
 
 # Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
-#initialize_all_qa_chains() 
+initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
