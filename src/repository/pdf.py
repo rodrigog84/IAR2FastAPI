@@ -18,23 +18,41 @@ from config.apiws import apiwsapiversion
 #quita problema cors
 from fastapi.middleware.cors import CORSMiddleware
 
-#LANGCHAIN
-from langchain.chat_models import ChatOpenAI
-from langchain.chat_models import PromptLayerChatOpenAI
-from langchain.chains import ConversationChain
-from langchain.chains import SequentialChain
-from langchain.prompts import ChatPromptTemplate
+
+# Importaciones actualizadas para LangChain
+#from langchain_community.chat_models import ChatOpenAI
+from langchain_openai.chat_models import ChatOpenAI
+#from langchain_community.embeddings import OpenAIEmbeddings  # Si usas embeddings
+from langchain_openai import OpenAIEmbeddings  # Si usas embeddings
+from langchain_anthropic import ChatAnthropic
+#from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, PyMuPDFLoader
+from langchain.prompts import PromptTemplate
+from langchain.chains import ConversationalRetrievalChain
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema.runnable import RunnableSequence, RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+#from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+
 from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
+#from langchain.llms import OpenAI
+from langchain_community.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.chains import ConversationalRetrievalChain
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+#from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, HumanMessagePromptTemplate
+#from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from langchain.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+#### NUEVOS
+
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
 
 
 import MySQLdb
@@ -69,13 +87,33 @@ import shutil
 qa_chains = {}
 
 
+'''
 #FUNCION PARA INICIALIZAR RAG PARA CASOS FAQ
 def initialize_qa_chain(codempresa):
     global qa_chains
-    llm_name = os.environ["LLM"] 
-    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
 
-    embedding = OpenAIEmbeddings()
+    llm_provider = os.environ["LLM_PROVIDER"] 
+
+    if llm_provider == "openai":
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+    elif llm_provider == "anthropic":
+        llm_name = os.environ["LLM_ANTHROPIC"] 
+        llm = ChatAnthropic(
+                    model="claude-3-5-sonnet-20241022",
+                    temperature=0,
+                    anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+                )
+        
+        embedding = OpenAIEmbeddings()        
+    else:
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+
+
+
 
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -153,31 +191,204 @@ def initialize_qa_chain(codempresa):
 
     splits = text_splitter.split_documents(all_docs)
 
-    persist_directory = f'{prefijo}src/routers/filesrag/{idempresa}/chroma/'
+    persist_directory = f'{prefijo}src/routers/filesrag/{idempresa}/{llm_provider}/chroma/'
     
     # Elimina el directorio y todo su contenido
 
-    # Verificar si el directorio existe antes de eliminarlo
+    #si el directorio existe, no es necesario crear nuevamente los embeddings
+    # en caso de cargar más archivos, mejor borrar carpeta
     if os.path.exists(persist_directory):
-        shutil.rmtree(persist_directory)
+        # Cargar la base de datos vectorial desde el directorio de persistencia
+        vectordb = Chroma(persist_directory=persist_directory, embedding_function=embedding)
+        # Verificar si el directorio existe antes de eliminarlo
+        #shutil.rmtree(persist_directory)
+
+    else:
+
+        # Crear el directorio (y cualquier directorio intermedio necesario)
+        os.makedirs(persist_directory, exist_ok=True)
+
+        # Crear la base de datos vectorial y calcular los embeddings
+        vectordb = Chroma.from_documents(
+            documents=splits,
+            embedding=embedding,
+            persist_directory=persist_directory
+        )
+
+    template = """
+        Contexto relevante:
+        {context}
+        
+        Historial de la conversación:
+        {chat_history}
+        
+        Pregunta actual: {question}
+        
+        Instrucciones: Proporciona una respuesta detallada y precisa basada en el contexto proporcionado.
+        Si la información no está disponible en el contexto, indica claramente que no puedes responder.
+        
+        Respuesta:"""
+    
+    _template = PromptTemplate(
+        input_variables=["context", "chat_history", "question"],
+        template=template
+    )
+
+    retriever = vectordb.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 4}
+    )
+
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
 
 
-    # Crear el directorio (y cualquier directorio intermedio necesario)
-    os.makedirs(persist_directory, exist_ok=True)
+
+
+    # Crear chain unificado que funciona con ambos proveedores
+    qa_chain = (
+        {"context": retriever | format_docs, 
+         "question": RunnablePassthrough(),
+         "chat_history": RunnablePassthrough()}
+        | _template 
+        | llm 
+        | StrOutputParser()
+    )
+
+
+
+
+    qa_chains[codempresa] = qa_chain
+
+    return qa_chain
+'''
+   
+#FUNCION PARA INICIALIZAR RAG PARA CASOS FAQ
+def initialize_qa_chain(codempresa):
+    global qa_chains
+
+    llm_provider = os.environ["LLM_PROVIDER"] 
+
+    if llm_provider == "openai":
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+    elif llm_provider == "anthropic":
+        llm_name = os.environ["LLM_ANTHROPIC"] 
+        llm = ChatAnthropic(
+                    model="claude-3-5-sonnet-20241022",
+                    temperature=0,
+                    anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+                )
+        #embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+        embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        #embedding = OpenAIEmbeddings()        
+    else:
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+
+
+    #CONEXION
+    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
+    mycursor = miConexion.cursor()
+
+    #BUSCA LA EMPRESA
+    mycursor.execute("""SELECT      id
+                                    , empresa
+                                    , promp1
+                                    , greeting
+                                    , whatsapp
+                                    , webchat
+                                    , time_min
+                                    , time_max
+                                    , derivation
+                                    , derivation_message
+                                    , chunk_size
+                                    , chunk_overlap
+                        FROM iar2_empresas WHERE typechatbot = 'PDF' AND codempresa = '%s'""" % (codempresa))
     
-    #print(persist_directory)
+    idempresa = 0
+    promp1 = ''
+    var_chunk_size = 0
+    var_chunk_overlap = 0
+    for row_empresa in mycursor.fetchall():
+        idempresa = row_empresa[0]
+        promp1 = row_empresa[2]
+        greeting = row_empresa[3]
+        whatsapp = row_empresa[4]
+        webchat = row_empresa[5]
+        time_min = row_empresa[6]
+        time_max = row_empresa[7]
+        tiene_derivacion = row_empresa[8]
+        derivation_message = row_empresa[9]     
+        var_chunk_size = row_empresa[10]     
+        var_chunk_overlap = row_empresa[10]     
+
+
+    promp_original = promp1
     
-    #AQUI FALLA CON PM2
+    if var_chunk_size == 0:
+        var_chunk_size = 1500
+
+    if var_chunk_overlap == 0:
+        var_chunk_overlap = 150
+
+
+    # DEFINE PREFIJO RUTA
+    prefijo = os.environ["PREFIJO_RUTA"] 
+    ############################################################################################################
+
+    # Obtener la lista de archivos asociados a la empresa
+    mycursor.execute("""SELECT file_path FROM iar2_files WHERE identerprise = '%d'""" % (idempresa))
+    file_paths = [row[0] for row in mycursor.fetchall()]    
+
+    #print(codempresa)
+    #print(idempresa)
+    #print(file_paths)
+    all_docs = []
+    for file_relative_path in file_paths:
+        file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
+        #print(file_relative_path_full)
+        loader = PyPDFLoader(file_relative_path_full)
+        docs = loader.load()
+        #print(docs[0].page_content[:100])
+        all_docs.extend(docs)   
+
     
-    vectordb = Chroma.from_documents(
-        documents=splits,
-        embedding=embedding,
-        persist_directory=persist_directory
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size = var_chunk_size,
+        chunk_overlap = var_chunk_overlap
     )    
+
+    #print(text_splitter)
+
+    splits = text_splitter.split_documents(all_docs)
+
+    persist_directory = f'{prefijo}src/routers/filesrag/{idempresa}/{llm_provider}/chroma/'
     
-    
-    
-  
+    # Elimina el directorio y todo su contenido
+
+    #si el directorio existe, no es necesario crear nuevamente los embeddings
+    # en caso de cargar más archivos, mejor borrar carpeta
+    if os.path.exists(persist_directory):
+        # Cargar la base de datos vectorial desde el directorio de persistencia
+        vectordb = Chroma(persist_directory=persist_directory, embedding_function=embedding)
+        # Verificar si el directorio existe antes de eliminarlo
+        #shutil.rmtree(persist_directory)
+
+    else:
+
+        # Crear el directorio (y cualquier directorio intermedio necesario)
+        os.makedirs(persist_directory, exist_ok=True)
+
+        # Crear la base de datos vectorial y calcular los embeddings
+        vectordb = Chroma.from_documents(
+            documents=splits,
+            embedding=embedding,
+            persist_directory=persist_directory
+        )
+
     template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
@@ -185,20 +396,28 @@ def initialize_qa_chain(codempresa):
     QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
     
-    chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
+    chain_type_kwargs = {
+        'prompt': QA_CHAIN_PROMPT
+    }
+
     # Run chain
     #RetrievalQA.from_chain_type sirve para hacer solo la consulta
     
     qa_chain = ConversationalRetrievalChain.from_llm(
                     llm=llm, 
-                    retriever=vectordb.as_retriever(),
+                    retriever=vectordb.as_retriever(
+                        search_kwargs={"k": 4}  # Ajusta el número de documentos recuperados
+                    ), 
+                    #retriever=vectordb.as_retriever(),                   
                     #memory=memory,
                     get_chat_history=lambda h:h,
                     return_source_documents=False,
-                    combine_docs_chain_kwargs=chain_type_kwargs)     
+                    combine_docs_chain_kwargs=chain_type_kwargs,
+                    verbose=False  # Útil para debugging
+                    )     
     
     qa_chains[codempresa] = qa_chain
-    
+
 
 #INICIALIZA CADA UNO DE LOS RAG EXISTENTES
 def initialize_all_qa_chains():
@@ -210,7 +429,7 @@ def initialize_all_qa_chains():
 
 
 # Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
-initialize_all_qa_chains() 
+#initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -428,145 +647,11 @@ def derivation_option(messagedata: MessageApi, id_interaction, idrow):
             'derivacion' : derivacion}
 
 
-def chatbot_message2(messagedata: MessageApi, id_interaction, idrow, promp1):
-
-    #llm_name = "gpt-3.5-turbo"   
-    llm_name = os.environ["LLM"]   
-    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
-    memory = ConversationBufferMemory(memory_key="chat_history")
-    embedding = OpenAIEmbeddings()
-    #CONEXION
-    miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
-    mycursor = miConexion.cursor()
-
-    #BUSCA LA EMPRESA
-    mycursor.execute("""SELECT      id
-                                    , empresa
-                                    , promp1
-                                    , greeting
-                                    , whatsapp
-                                    , webchat
-                                    , time_min
-                                    , time_max
-                                    , derivation
-                                    , derivation_message
-                        FROM iar2_empresas WHERE codempresa = '%s'""" % (messagedata.enterprise))
-    
-    idempresa = 0
-    promp1 = ''
-    for row_empresa in mycursor.fetchall():
-        idempresa = row_empresa[0]
-        promp1 = row_empresa[2]
-        greeting = row_empresa[3]
-        whatsapp = row_empresa[4]
-        webchat = row_empresa[5]
-        time_min = row_empresa[6]
-        time_max = row_empresa[7]
-        tiene_derivacion = row_empresa[8]
-        derivation_message = row_empresa[9]    
-    
-
-    #EVALUA LOS MENSAJES EXISTENTES DE LA INTERACCION ACTUAL
-    mycursor.execute("""SELECT      identification
-                                    , typemessage
-                                    , valuetype
-                                    , ifnull(message,'') as message 
-                                    , messageresponseia
-                                    , ifnull(messageresponsecustomer,'') as messageresponsecustomer
-                                    , classification
-                                    , sla
-                                    , isclaim
-                                    , typeresponse
-                                    , derivacion 
-                        FROM        iar2_captura 
-                        WHERE       idinteraction = '%s' 
-                        ORDER BY    created_at """ % (id_interaction))
-
-    mensajes_previos = 0
-    reclamo_ingresado = 0
-    derivacion = 0
-    messages = []
-
-    for row in mycursor.fetchall():
-
-        mensajes_previos = mensajes_previos + 1
-        messages.append((row[3], row[5]))
-
-        memory.save_context({"input": row[3]}, 
-                            {"output": row[5]})
-                
- 
-    #memory.load_memory_variables({})        
-
-    #ESCRIBIR LAS DISTINTAS PREGUNTAS
-     
-    question = messagedata.message 
-    promp_original = promp1
-    memory.save_context({"input": question}, 
-                        {"output": ''})
-    memory.load_memory_variables({})
-
-    ############################################################################################################
-    ##   OBTENER PREGUNTAS FRECUENTES
-
-    mycursor.execute("""SELECT  question
-                            , answer
-                    FROM    iar2_faq
-                    WHERE   identerprise = '%d' 
-                    ORDER BY id """ % (idempresa))            
-
-
-    texts = []
-    question_text = ""
-    for questions in mycursor.fetchall():
-        question_text = f'Pregunta: {questions[0]}, Respuesta: {questions[1]}'
-        texts.append(question_text)
-
-    vectordb = Chroma.from_texts(texts, embedding=embedding)
-
-    template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
-    {context}
-    Question: {question}
-    Helpful Answer:"""
-    QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
-    
-
-    chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
-    # Run chain
-    #RetrievalQA.from_chain_type sirve para hacer solo la consulta
-    
-    qa_chain = RetrievalQA.from_chain_type(
-        llm,
-        retriever=vectordb.as_retriever(),
-        return_source_documents=True,
-        chain_type_kwargs=chain_type_kwargs
-    )
-    result = qa_chain({"query": question})    
-    response = result['result']
-    typeresponse = 'Interaccion'
-    responsecustomer = response
-
-    # response = ''
-    # GUARDADO RESPUESTA
-    sqlresponse =  "UPDATE iar2_captura SET identification = '', messageresponseia = '%s', messageresponsecustomer = '%s', typeresponse = '%s', derivacion = '%s', idinteraction = '%d'  WHERE id = %d" % (sqlescape(response), sqlescape(responsecustomer), typeresponse, 'NO', id_interaction, idrow)
-    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
-    mycursor.execute(sqlresponse)   
-    miConexion.commit()
-
-    sqlresponse =  "UPDATE iar2_interaction SET  lastmessage =  '%s', lastmessageresponsecustomer =  '%s', lastyperesponse =  '%s' WHERE id = %d" % (sqlescape(messagedata.message), sqlescape(responsecustomer), typeresponse, id_interaction)
-    #valresponse = (messagedata.typemessage, messagedata.valuetype, messagedata.message, messagedata.enterprise)
-    mycursor.execute(sqlresponse)   
-    miConexion.commit()    
-
-    return responsecustomer
-
-
 def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
-    #llm_name = "gpt-3.5-turbo"   
+
     global qa_chains
 
-    llm_name = os.environ["LLM"]   
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -646,8 +731,11 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
         initialize_qa_chain(codempresa)
 
     qa_chain = qa_chains[codempresa]
+
     chat_history = []
     result = qa_chain({"question": question, "chat_history": messages})
+    #result = qa_chain | {"question": question, "chat_history": messages}
+
     
     response = result["answer"]
     typeresponse = 'Interaccion'
@@ -671,13 +759,23 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 def send_message(messagedata: MessageApi):
 
     ##MODELO DE LENGUAJE
-    #llm_name = "gpt-3.5-turbo"   
-    llm_name = os.environ["LLM"]   
-    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
-    embedding = OpenAIEmbeddings()
+    llm_provider = os.environ["LLM_PROVIDER"] 
 
-    memory = ConversationBufferMemory(memory_key="chat_history")
-
+    if llm_provider == "openai":
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    elif llm_provider == "anthropic":
+        llm_name = os.environ["LLM_ANTHROPIC"] 
+        llm = ChatAnthropic(
+                    model="claude-3-5-sonnet-20241022",
+                    temperature=0,
+                    anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+                )
+    else:
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    
+   
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
@@ -765,17 +863,33 @@ def send_message(messagedata: MessageApi):
         derivation = row_interaction[1]
 
 
+
     ## CASO 2: INTERACCION NUEVA - SALUDO
-    if tiene_mensaje == 0:
-        #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
-        if fuera_time_min == 1 or fuera_time_max == 1: 
-            responsecustomer = out_time_message(messagedata)
-        else:
-            #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
-            responsecustomer = greeting_message(messagedata)
-            
-        return {'respuesta': responsecustomer,
-                'derivacion' : 0}
+    # EN WHATSAPP Y RRSS HAY UN MENSAJE DE BIENVENIDA
+    if messagedata.typemessage != 'WebChat':
+
+        if tiene_mensaje == 0:
+            #SI EL MENSAJE SE PRODUJO FUERA DEL HORARIO DEFINIDO
+            if fuera_time_min == 1 or fuera_time_max == 1: 
+                responsecustomer = out_time_message(messagedata)
+            else:
+                #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+                responsecustomer = greeting_message(messagedata)
+                
+            return {'respuesta': responsecustomer,
+                    'derivacion' : 0}
+
+
+    else:
+
+        #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+        sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
+        mycursor.execute(sql, val)   
+        miConexion.commit()
+
+        id_interaction = mycursor.lastrowid
+
 
     # GUARDADO MENSAJE ENTRANTE
     sql = "INSERT INTO iar2_captura (typemessage, valuetype, message, identerprise, idinteraction) VALUES (%s, %s, %s, %s, %s)"
@@ -804,13 +918,21 @@ def send_message(messagedata: MessageApi):
         "\n\n{human_input}"
     )
     # chain 2: input= English_Review and output= summary
-    chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
-                        output_key="intencion_derivacion"
-                        )
+    #chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
+    #                    output_key="intencion_derivacion"
+    #                    )
+    
+    # **Cambio importante: Uso de la nueva API de LangChain**
+    chain_derivarion = derivation_prompt | llm
     
 
-    response_derivacion = chain_derivarion.predict(human_input=question)
-
+    #response_derivacion = chain_derivarion.predict(human_input=question)
+    # Ejecutar la cadena para predecir la intención de derivación
+    response_text  = chain_derivarion.invoke({"human_input": question})
+    #print('---------------------------------------------------------')
+    #print(response_text)
+    response_derivacion = response_text.content
+    #print(response_derivacion)
 
     ## CASO 4: CLIENTE PIDE AHORA DERIVACION
     if response_derivacion == 'SI':

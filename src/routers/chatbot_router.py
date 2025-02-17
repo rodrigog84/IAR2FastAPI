@@ -36,13 +36,31 @@ from datetime import date
 from datetime import datetime
 
 #INCLUDE REPOSITORY
-from src.repository import claim
-from src.repository import faq
-from src.repository import utils
+
+# GESTION DE RECLAMOS
+#from src.repository import claim    
+
+# PREGUNTAS FRECUENTES
+#from src.repository import faq
+
+# CHATBOT CON PDF
 from src.repository import pdf
-from src.repository import api
-from src.repository import oirst
-from src.repository import html
+
+# CHATBOT CON CONTENIDO DE PAGINA WEB
+#from src.repository import html
+
+# CHATBOT CON API (TRANSFORMA DATOS NO ESTRUCTURADOS EN ESTRUCTURADOS)
+#from src.repository import api
+
+# CHATBOT OIRS
+#from src.repository import oirst
+
+# BUSCADOR SEMANTICO
+#from src.repository import semantic
+
+# FUNCIONES PARA TODAS LAS CLASES
+from src.repository import utils
+
 
 import os
 import openai
@@ -66,6 +84,26 @@ def send_message(messagedata: MessageApi):
     #print(messagedata)
     derivacion = 0
     responsecustomer = ''
+    response = pdf.send_message(messagedata)
+
+    if responsecustomer == 'Parametros Incorrectos':
+        return {'respuesta': responsecustomer,
+                'derivacion' : derivacion}
+    else:
+
+        if messagedata.solution == 'OIRS_T': 
+            return {'respuesta': response['respuesta'],
+                    'finish' : response['finish']}
+        else:
+            return {'respuesta': response['respuesta'],
+                    'derivacion' : response['derivacion']}
+
+
+'''
+def send_message(messagedata: MessageApi):
+    #print(messagedata)
+    derivacion = 0
+    responsecustomer = ''
     if messagedata.solution == 'Reclamos':     
         response = claim.send_message(messagedata)
     elif messagedata.solution == 'FAQ': 
@@ -77,7 +115,9 @@ def send_message(messagedata: MessageApi):
     elif messagedata.solution == 'OIRS_T': 
         response = oirst.send_message(messagedata)           
     elif messagedata.solution == 'HTML': 
-        response = html.send_message(messagedata)                      
+        response = html.send_message(messagedata)        
+    elif messagedata.solution == 'SEMANTICO': 
+        response = semantic.send_message(messagedata)       
     else:
         responsecustomer = 'Parametros Incorrectos'
 
@@ -93,7 +133,7 @@ def send_message(messagedata: MessageApi):
         else:
             return {'respuesta': response['respuesta'],
                     'derivacion' : response['derivacion']}
-
+'''
 
 
 ####LECTURA DE RECLAMOS
@@ -101,7 +141,8 @@ def send_message(messagedata: MessageApi):
 def get_messages(enterprise: str,solution: str):
 
     if solution == 'Reclamos':     
-        reclamos = claim.get_messages(enterprise)
+        #reclamos = claim.get_messages(enterprise)
+        reclamos = []
     else:
         reclamos = []
 
@@ -111,19 +152,20 @@ def get_messages(enterprise: str,solution: str):
 ### ENVIA MENSAJE DE FINALIZACION DE CONVERSACION
 @chatbot_router.get('/finish_message/')
 def finish_message():
-    message = claim.finish_message()
-    message = faq.finish_message()
+    #message = claim.finish_message()
+    #message = faq.finish_message()
     message = pdf.finish_message()
-    message = oirst.finish_message()
+    #message = oirst.finish_message()
     return {'data' : message}
 
 
 ### ENVIA MENSAJE DE FINALIZACION DE CONVERSACION
+'''
 @chatbot_router.get('/process_message/')
 def process_message():
     message = oirst.process_message()
     return {'data' : message}
-
+'''
 
 ### ENVIA MENSAJE DE VUELTA
 @chatbot_router.post('/send_message_back/')

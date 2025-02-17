@@ -21,7 +21,8 @@ from config.apiws import apiwsapiversion
 from fastapi.middleware.cors import CORSMiddleware
 
 #LANGCHAIN
-from langchain.chat_models import ChatOpenAI
+#from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import ConversationChain
 from langchain.chains import SequentialChain
 from langchain.prompts import ChatPromptTemplate
