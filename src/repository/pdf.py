@@ -267,6 +267,8 @@ def initialize_qa_chain(codempresa):
 def initialize_qa_chain(codempresa):
     global qa_chains
 
+
+
     llm_provider = os.environ["LLM_PROVIDER"] 
 
     if llm_provider == "openai":
@@ -359,8 +361,10 @@ def initialize_qa_chain(codempresa):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = var_chunk_size,
         chunk_overlap = var_chunk_overlap
-    )    
+    )  
 
+    #print(file_relative_path_full)  
+    #return file_relative_path_full
     #print(text_splitter)
 
     splits = text_splitter.split_documents(all_docs)
@@ -369,13 +373,38 @@ def initialize_qa_chain(codempresa):
     
     # Elimina el directorio y todo su contenido
 
+
+    # Verificar si el directorio existe antes de eliminarlo
+    if os.path.exists(persist_directory):
+        shutil.rmtree(persist_directory)
+
+    # Crear el directorio (y cualquier directorio intermedio necesario)
+    os.makedirs(persist_directory, exist_ok=True)
+
+    # Crear la base de datos vectorial y calcular los embeddings
+    vectordb = Chroma.from_documents(
+        documents=splits,
+        embedding=embedding,
+        persist_directory=persist_directory
+    )
+
+
     #si el directorio existe, no es necesario crear nuevamente los embeddings
     # en caso de cargar más archivos, mejor borrar carpeta
+    
+    '''
     if os.path.exists(persist_directory):
         # Cargar la base de datos vectorial desde el directorio de persistencia
-        vectordb = Chroma(persist_directory=persist_directory, embedding_function=embedding)
+        #vectordb = Chroma(persist_directory=persist_directory, embedding_function=embedding)
         # Verificar si el directorio existe antes de eliminarlo
-        #shutil.rmtree(persist_directory)
+        shutil.rmtree(persist_directory)
+
+        # Crear la base de datos vectorial y calcular los embeddings
+        vectordb = Chroma.from_documents(
+            documents=splits,
+            embedding=embedding,
+            persist_directory=persist_directory
+        )        
 
     else:
 
@@ -388,7 +417,7 @@ def initialize_qa_chain(codempresa):
             embedding=embedding,
             persist_directory=persist_directory
         )
-
+    '''
     template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
@@ -405,10 +434,10 @@ def initialize_qa_chain(codempresa):
     
     qa_chain = ConversationalRetrievalChain.from_llm(
                     llm=llm, 
-                    retriever=vectordb.as_retriever(
-                        search_kwargs={"k": 4}  # Ajusta el número de documentos recuperados
-                    ), 
-                    #retriever=vectordb.as_retriever(),                   
+                    #retriever=vectordb.as_retriever(
+                    #    search_kwargs={"k": 4}  # Ajusta el número de documentos recuperados
+                    #), 
+                    retriever=vectordb.as_retriever(),                   
                     #memory=memory,
                     get_chat_history=lambda h:h,
                     return_source_documents=False,
@@ -416,6 +445,7 @@ def initialize_qa_chain(codempresa):
                     verbose=False  # Útil para debugging
                     )     
     
+
     qa_chains[codempresa] = qa_chain
 
 
@@ -652,7 +682,11 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     global qa_chains
 
+
+
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+   
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
@@ -730,6 +764,7 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
 
+
     qa_chain = qa_chains[codempresa]
 
     chat_history = []
@@ -761,6 +796,9 @@ def send_message(messagedata: MessageApi):
     ##MODELO DE LENGUAJE
     llm_provider = os.environ["LLM_PROVIDER"] 
 
+    
+
+
     if llm_provider == "openai":
         llm_name = os.environ["LLM"] 
         llm = ChatOpenAI(model_name=llm_name, temperature=0) 
@@ -775,10 +813,13 @@ def send_message(messagedata: MessageApi):
         llm_name = os.environ["LLM"] 
         llm = ChatOpenAI(model_name=llm_name, temperature=0) 
     
+
+
    
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
+
 
 
     #BUSCA LA EMPRESA
@@ -818,6 +859,8 @@ def send_message(messagedata: MessageApi):
         whatsappapi = row_empresa[12]
 
 
+
+
     #VALIDACION DE EMPRESA
     if idempresa == 0:
         return {'respuesta': 'Empresa no existe',
@@ -827,7 +870,7 @@ def send_message(messagedata: MessageApi):
     if messagedata.typemessage == 'Whatsapp' and whatsapp == 0:
         return {'respuesta': 'Canal no permitido',
                 'derivacion' : 0}
-    if messagedata.typemessage == 'Webchat' and webchat == 0:
+    if messagedata.typemessage == 'WebChat' and webchat == 0:
         return {'respuesta': 'Canal no permitido' ,
                 'derivacion' : 0}   
     if messagedata.typemessage == 'WhatsappAPI' and whatsappapi == 0:
@@ -836,6 +879,9 @@ def send_message(messagedata: MessageApi):
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
+
+
+
 
     ## CASO 1: LIMPIEZA REGISTRO    
     if messagedata.message == 'Limpiar registro':
@@ -917,6 +963,8 @@ def send_message(messagedata: MessageApi):
         "Indícame si en la siguiente pregunta el usuario indica de manera explícita que quiere derivar la conversación a un ejecutivo humano y terminar la conversación con el bot.  Tu respuesta debe ser SI o NO:"
         "\n\n{human_input}"
     )
+
+
     # chain 2: input= English_Review and output= summary
     #chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
     #                    output_key="intencion_derivacion"
@@ -925,10 +973,12 @@ def send_message(messagedata: MessageApi):
     # **Cambio importante: Uso de la nueva API de LangChain**
     chain_derivarion = derivation_prompt | llm
     
-
+  
     #response_derivacion = chain_derivarion.predict(human_input=question)
     # Ejecutar la cadena para predecir la intención de derivación
     response_text  = chain_derivarion.invoke({"human_input": question})
+
+
     #print('---------------------------------------------------------')
     #print(response_text)
     response_derivacion = response_text.content

@@ -41,7 +41,7 @@ from datetime import datetime
 #from src.repository import claim    
 
 # PREGUNTAS FRECUENTES
-#from src.repository import faq
+from src.repository import faq
 
 # CHATBOT CON PDF
 from src.repository import pdf
@@ -81,10 +81,17 @@ class WebhookRequestData(BaseModel):
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 @chatbot_router.post('/send_message/')
 def send_message(messagedata: MessageApi):
-    #print(messagedata)
+
     derivacion = 0
     responsecustomer = ''
-    response = pdf.send_message(messagedata)
+
+    if messagedata.solution == 'FAQ': 
+        response = faq.send_message(messagedata)
+    elif messagedata.solution == 'PDF': 
+        response = pdf.send_message(messagedata)
+    else:
+        responsecustomer = 'Parametros Incorrectos'
+
 
     if responsecustomer == 'Parametros Incorrectos':
         return {'respuesta': responsecustomer,
@@ -97,7 +104,6 @@ def send_message(messagedata: MessageApi):
         else:
             return {'respuesta': response['respuesta'],
                     'derivacion' : response['derivacion']}
-
 
 '''
 def send_message(messagedata: MessageApi):

@@ -19,19 +19,41 @@ from config.apiws import apiwsapiversion
 from fastapi.middleware.cors import CORSMiddleware
 
 #LANGCHAIN
-from langchain.chat_models import ChatOpenAI
-from langchain.chat_models import PromptLayerChatOpenAI
-from langchain.chains import ConversationChain
-from langchain.chains import SequentialChain
-from langchain.prompts import ChatPromptTemplate
+# Importaciones actualizadas para LangChain
+#from langchain_community.chat_models import ChatOpenAI
+from langchain_openai.chat_models import ChatOpenAI
+#from langchain_community.embeddings import OpenAIEmbeddings  # Si usas embeddings
+from langchain_openai import OpenAIEmbeddings  # Si usas embeddings
+from langchain_anthropic import ChatAnthropic
+#from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, PyMuPDFLoader
+from langchain.prompts import PromptTemplate
+from langchain.chains import ConversationalRetrievalChain
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema.runnable import RunnableSequence, RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+#from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+
 from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
+#from langchain.llms import OpenAI
+from langchain_community.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.chains import ConversationalRetrievalChain
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+#from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, HumanMessagePromptTemplate
+#from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+#### NUEVOS
+
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+
+
 
 import MySQLdb
 
@@ -67,10 +89,28 @@ qa_chains = {}
 #FUNCION PARA INICIALIZAR RAG PARA CASOS FAQ
 def initialize_qa_chain(codempresa):
     global qa_chains
-    llm_name = os.environ["LLM"] 
-    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
 
-    embedding = OpenAIEmbeddings()
+    llm_provider = os.environ["LLM_PROVIDER"] 
+
+    if llm_provider == "openai":
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+    elif llm_provider == "anthropic":
+        llm_name = os.environ["LLM_ANTHROPIC"] 
+        llm = ChatAnthropic(
+                    model="claude-3-5-sonnet-20241022",
+                    temperature=0,
+                    anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+                )
+        #embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+        embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        #embedding = OpenAIEmbeddings()        
+    else:
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        embedding = OpenAIEmbeddings()
+
 
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -380,7 +420,6 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     #llm_name = "gpt-3.5-turbo"   
     global qa_chains
 
-    llm_name = os.environ["LLM"]   
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -411,7 +450,6 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
         time_max = row_empresa[7]
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]    
-    
 
     #EVALUA LOS MENSAJES EXISTENTES DE LA INTERACCION ACTUAL
     mycursor.execute("""SELECT      identification
@@ -455,15 +493,20 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     question = messagedata.message 
     codempresa = messagedata.enterprise
 
-    
+    #print('chatbot_message')
+    #print(codempresa)
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
-    qa_chain = qa_chains[codempresa]
 
+
+    qa_chain = qa_chains[codempresa]
+    
     chat_history = []
     result = qa_chain({"question": question, "chat_history": messages})
     
     response = result["answer"]
+
+    
     typeresponse = 'Interaccion'
     responsecustomer = response
 
@@ -479,18 +522,30 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     mycursor.execute(sqlresponse)   
     miConexion.commit()    
     #return result
+
+    #print(responsecustomer)
     return responsecustomer
 
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 def send_message(messagedata: MessageApi):
 
     ##MODELO DE LENGUAJE
-    #llm_name = "gpt-3.5-turbo"   
-    llm_name = os.environ["LLM"]   
-    llm = ChatOpenAI(model_name=llm_name, temperature=0) 
-    embedding = OpenAIEmbeddings()
+    llm_provider = os.environ["LLM_PROVIDER"] 
 
-    memory = ConversationBufferMemory(memory_key="chat_history")
+
+    if llm_provider == "openai":
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    elif llm_provider == "anthropic":
+        llm_name = os.environ["LLM_ANTHROPIC"] 
+        llm = ChatAnthropic(
+                model="claude-3-5-sonnet-20241022",
+                temperature=0,
+                anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+            )
+    else:
+        llm_name = os.environ["LLM"] 
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
 
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
@@ -533,12 +588,12 @@ def send_message(messagedata: MessageApi):
         fuera_time_max = row_empresa[11]
         whatsappapi = row_empresa[12]
 
-
     #VALIDACION DE EMPRESA
     if idempresa == 0:
+        
         return {'respuesta': 'Empresa no existe',
                 'derivacion' : 0}
-    
+
     #VALIDACION DE CANAL
     if messagedata.typemessage == 'Whatsapp' and whatsapp == 0:
         return {'respuesta': 'Canal no permitido',
@@ -598,14 +653,14 @@ def send_message(messagedata: MessageApi):
 
     else:
 
-        if tiene_mensaje == 0:
-            #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
-            sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
-            mycursor.execute(sql, val)   
-            miConexion.commit()
+        
+        #SI NO TIENE NINGUN MENSAJE PREVIO Y ESTÁ DENTRO DEL HORARIO, ENVIA MENSAJE DE BIENVENIDA
+        sql = "INSERT INTO iar2_interaction (identerprise, typemessage, valuetype, lastmessage, lastmessageresponsecustomer, lastyperesponse, derivation) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (idempresa, messagedata.typemessage, messagedata.valuetype, sqlescape(messagedata.message), '', 'Saludo',0)
+        mycursor.execute(sql, val)   
+        miConexion.commit()
 
-            id_interaction = mycursor.lastrowid
+        id_interaction = mycursor.lastrowid
 
 
     # GUARDADO MENSAJE ENTRANTE
@@ -635,12 +690,18 @@ def send_message(messagedata: MessageApi):
         "\n\n{human_input}"
     )
     # chain 2: input= English_Review and output= summary
-    chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
-                        output_key="intencion_derivacion"
-                        )
+    #chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
+    #                    output_key="intencion_derivacion"
+    #                    )
     
+    # **Cambio importante: Uso de la nueva API de LangChain**
+    chain_derivarion = derivation_prompt | llm
 
-    response_derivacion = chain_derivarion.predict(human_input=question)
+    #response_derivacion = chain_derivarion.predict(human_input=question)
+    # Ejecutar la cadena para predecir la intención de derivación
+    response_text  = chain_derivarion.invoke({"human_input": question})
+
+    response_derivacion = response_text.content
 
 
     ## CASO 4: CLIENTE PIDE AHORA DERIVACION
@@ -653,6 +714,8 @@ def send_message(messagedata: MessageApi):
 
     ## CASO 5: COMUNICACION CON CHATBOT/ ESTO ES CUANDO EL MENSAJE NO ES DE BIENVENIDA, NI TAMPOCO LO CONTESTA UN HUMANO
     responsecustomer = chatbot_message(messagedata, id_interaction, idrow,  promp1)
+
+    #print(responsecustomer)
 
     return {'respuesta': responsecustomer,
             'derivacion' : 0}
