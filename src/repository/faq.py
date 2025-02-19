@@ -598,7 +598,7 @@ def send_message(messagedata: MessageApi):
     if messagedata.typemessage == 'Whatsapp' and whatsapp == 0:
         return {'respuesta': 'Canal no permitido',
                 'derivacion' : 0}
-    if messagedata.typemessage == 'Webchat' and webchat == 0:
+    if messagedata.typemessage == 'WebChat' and webchat == 0:
         return {'respuesta': 'Canal no permitido' ,
                 'derivacion' : 0}   
     if messagedata.typemessage == 'WhatsappAPI' and whatsappapi == 0:
