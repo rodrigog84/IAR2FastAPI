@@ -210,7 +210,7 @@ def initialize_qa_chain(codempresa):
     
     
   
-    template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
+    template = promp1 + """ 
     {context}
     Question: {question}
     Helpful Answer:"""
@@ -549,6 +549,10 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
     qa_chain = qa_chains[codempresa]
     chat_history = []
+
+    #print(messages)
+
+    #print(qa_chain)
     result = qa_chain({"question": question, "chat_history": messages})
     
     response = result["answer"]
