@@ -49,6 +49,9 @@ from src.repository import pdf
 # CHATBOT CON CONTENIDO DE PAGINA WEB
 from src.repository import html
 
+# CHATBOT PARA INGENIERA ESTRUCTURAL
+from src.repository import struct
+
 # CHATBOT CON API (TRANSFORMA DATOS NO ESTRUCTURADOS EN ESTRUCTURADOS)
 #from src.repository import api
 
@@ -89,6 +92,8 @@ def send_message(messagedata: MessageApi):
         response = faq.send_message(messagedata)
     elif messagedata.solution == 'PDF': 
         response = pdf.send_message(messagedata)
+    elif messagedata.solution == 'STRUCT': 
+        response = struct.send_message(messagedata)        
     elif messagedata.solution == 'HTML': 
         response = html.send_message(messagedata)            
     else:

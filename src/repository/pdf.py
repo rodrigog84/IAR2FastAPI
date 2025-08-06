@@ -273,7 +273,8 @@ def initialize_qa_chain(codempresa):
 
     if llm_provider == "openai":
         llm_name = os.environ["LLM"] 
-        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        #llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        llm = ChatOpenAI(model_name=llm_name) 
         embedding = OpenAIEmbeddings()
     elif llm_provider == "anthropic":
         llm_name = os.environ["LLM_ANTHROPIC"] 
@@ -351,7 +352,7 @@ def initialize_qa_chain(codempresa):
     all_docs = []
     for file_relative_path in file_paths:
         file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
-        #print(file_relative_path_full)
+        print(file_relative_path_full)
         loader = PyPDFLoader(file_relative_path_full)
         docs = loader.load()
         #print(docs[0].page_content[:100])
@@ -459,7 +460,7 @@ def initialize_all_qa_chains():
 
 
 # Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
-initialize_all_qa_chains() 
+#initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -801,7 +802,8 @@ def send_message(messagedata: MessageApi):
 
     if llm_provider == "openai":
         llm_name = os.environ["LLM"] 
-        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        #llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+        llm = ChatOpenAI(model_name=llm_name) 
     elif llm_provider == "anthropic":
         llm_name = os.environ["LLM_ANTHROPIC"] 
         llm = ChatAnthropic(

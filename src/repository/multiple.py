@@ -18,7 +18,7 @@ from config.apiws import apiwsapiversion
 #quita problema cors
 from fastapi.middleware.cors import CORSMiddleware
 
-#LANGCHAIN
+
 # Importaciones actualizadas para LangChain
 #from langchain_community.chat_models import ChatOpenAI
 from langchain_openai.chat_models import ChatOpenAI
@@ -28,6 +28,7 @@ from langchain_anthropic import ChatAnthropic
 #from langchain_community.vectorstores import Chroma
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, PyMuPDFLoader
+from langchain.schema import Document
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -48,10 +49,12 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, HumanMessagePromptTemplate
 #from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
+
 #### NUEVOS
 
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
+
 
 import MySQLdb
 
@@ -83,11 +86,14 @@ import shutil
 
 # Diccionario global para almacenar las instancias de qa_chain
 qa_chains = {}
+solution = 'MULTIPLE'
 
-
+  
 #FUNCION PARA INICIALIZAR RAG PARA CASOS FAQ
 def initialize_qa_chain(codempresa):
     global qa_chains
+
+
 
     llm_provider = os.environ["LLM_PROVIDER"] 
 
@@ -128,7 +134,10 @@ def initialize_qa_chain(codempresa):
                                     , derivation_message
                                     , chunk_size
                                     , chunk_overlap
-                        FROM iar2_empresas WHERE typechatbot = 'HTML' AND codempresa = '%s'""" % (codempresa))
+                                    , source_pdf
+                                    , source_html
+                                    , source_text
+                        FROM iar2_empresas WHERE typechatbot = 'PDF' AND codempresa = '%s'""" % (codempresa))
     
     idempresa = 0
     promp1 = ''
@@ -145,7 +154,10 @@ def initialize_qa_chain(codempresa):
         tiene_derivacion = row_empresa[8]
         derivation_message = row_empresa[9]     
         var_chunk_size = row_empresa[10]     
-        var_chunk_overlap = row_empresa[10]     
+        var_chunk_overlap = row_empresa[11]     
+        source_pdf = row_empresa[12]   
+        source_html = row_empresa[13]   
+        source_text = row_empresa[14]   
 
 
     promp_original = promp1
@@ -160,27 +172,42 @@ def initialize_qa_chain(codempresa):
     # DEFINE PREFIJO RUTA
     prefijo = os.environ["PREFIJO_RUTA"] 
     ############################################################################################################
-
-    # Obtener la lista de archivos asociados a la empresa
-    mycursor.execute("""SELECT url_path FROM iar2_url WHERE identerprise = '%d'""" % (idempresa))
-    url_paths = [row[0] for row in mycursor.fetchall()]    
-
-    #print(codempresa)
-    #print(idempresa)
-    #print(file_paths)
     all_docs = []
-    for url_relative_path in url_paths:
-        loader = WebBaseLoader(url_relative_path)
-        docs = loader.load()
-        #print(docs[0].page_content[:100])
-        all_docs.extend(docs)   
+    # Obtener la lista de archivos asociados a la empresa
+    if source_pdf == 1:
 
-    
+        mycursor.execute("""SELECT file_path FROM iar2_multiple WHERE tipo = 'PDF' and identerprise ='%d'""" % (idempresa))
+        file_paths = [row[0] for row in mycursor.fetchall()]    
+        for file_relative_path in file_paths:
+            file_relative_path_full = f'{prefijo}src/routers/filesrag/{idempresa}/{file_relative_path}' 
+            loader = PyPDFLoader(file_relative_path_full)
+            docs = loader.load()
+            all_docs.extend(docs)   
+
+    if source_html == 1:
+
+        mycursor.execute("""SELECT url_path FROM iar2_multiple WHERE tipo = 'HTML' and identerprise ='%d'""" % (idempresa))
+        url_paths = [row[0] for row in mycursor.fetchall()]    
+        for url_relative_path in url_paths:
+            loader = WebBaseLoader(url_relative_path)
+            docs = loader.load()
+            all_docs.extend(docs)
+
+      # Cargar documentos desde BD
+    if source_text:
+        mycursor.execute("SELECT text_context FROM iar2_multiple WHERE tipo = 'TEXTO' and identerprise ='%d'""" % (idempresa))
+
+        for questions in mycursor.fetchall():
+            question_text = f'{questions[0]}, '
+            all_docs.append(Document(page_content=question_text))
+            
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = var_chunk_size,
         chunk_overlap = var_chunk_overlap
-    )    
+    )  
 
+    #print(file_relative_path_full)  
+    #return file_relative_path_full
     #print(text_splitter)
 
     splits = text_splitter.split_documents(all_docs)
@@ -189,62 +216,69 @@ def initialize_qa_chain(codempresa):
     
     # Elimina el directorio y todo su contenido
 
+
     # Verificar si el directorio existe antes de eliminarlo
     if os.path.exists(persist_directory):
         shutil.rmtree(persist_directory)
 
-
     # Crear el directorio (y cualquier directorio intermedio necesario)
     os.makedirs(persist_directory, exist_ok=True)
-    
-    #print(persist_directory)
-    
-    #AQUI FALLA CON PM2. 
-    
+
+    # Crear la base de datos vectorial y calcular los embeddings
     vectordb = Chroma.from_documents(
         documents=splits,
         embedding=embedding,
         persist_directory=persist_directory
-    )    
-    
-    
-    
+    )
+
+
+    #si el directorio existe, no es necesario crear nuevamente los embeddings
+    # en caso de cargar más archivos, mejor borrar carpeta
   
-    template = promp1 + """ 
+    template = promp1 + """ Utilice las siguientes piezas de contexto para responder la pregunta al final. Si no sabe la respuesta, simplemente diga que no tiene la información, no intente inventar una respuesta. No haga referencia a que está utilizando un texto.  Responda entregando la mayor cantidad de información posible.
     {context}
     Question: {question}
     Helpful Answer:"""
     QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
-    #print(template)
-
     
-    chain_type_kwargs = {'prompt': QA_CHAIN_PROMPT}
+    chain_type_kwargs = {
+        'prompt': QA_CHAIN_PROMPT
+    }
+
     # Run chain
     #RetrievalQA.from_chain_type sirve para hacer solo la consulta
     
     qa_chain = ConversationalRetrievalChain.from_llm(
                     llm=llm, 
-                    retriever=vectordb.as_retriever(),
+                    #retriever=vectordb.as_retriever(
+                    #    search_kwargs={"k": 4}  # Ajusta el número de documentos recuperados
+                    #), 
+                    retriever=vectordb.as_retriever(),                   
                     #memory=memory,
                     get_chat_history=lambda h:h,
                     return_source_documents=False,
-                    combine_docs_chain_kwargs=chain_type_kwargs)     
+                    combine_docs_chain_kwargs=chain_type_kwargs,
+                    verbose=False  # Útil para debugging
+                    )     
     
+
     qa_chains[codempresa] = qa_chain
-    
+
 
 #INICIALIZA CADA UNO DE LOS RAG EXISTENTES
 def initialize_all_qa_chains():
+    global solution
+
     miConexion = MySQLdb.connect(host=hostMysql, user=userMysql, passwd=passwordMysql, db=dbMysql)
     mycursor = miConexion.cursor()
-    mycursor.execute("SELECT codempresa FROM iar2_empresas WHERE typechatbot = 'HTML'")
+    mycursor.execute("""SELECT codempresa FROM iar2_empresas WHERE typechatbot = '%s'""" % (solution))
     for (codempresa,) in mycursor.fetchall():
         initialize_qa_chain(codempresa)
 
 
 # Inicializar todas las empresas al inicio (deshabilitamos opcion.  Sólo se inicializa al ocupar servicio)
-#initialize_all_qa_chains() 
+initialize_all_qa_chains() 
 
 def limpiar_registro(messagedata: MessageApi, idempresa):
 
@@ -462,14 +496,16 @@ def derivation_option(messagedata: MessageApi, id_interaction, idrow):
             'derivacion' : derivacion}
 
 
-
 def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 
-    #llm_name = "gpt-3.5-turbo"   
+
     global qa_chains
 
 
+
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+   
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
@@ -547,13 +583,13 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
     if codempresa not in qa_chains:
         initialize_qa_chain(codempresa)
 
+
     qa_chain = qa_chains[codempresa]
+
     chat_history = []
-
-    #print(messages)
-
-    #print(qa_chain)
     result = qa_chain({"question": question, "chat_history": messages})
+    #result = qa_chain | {"question": question, "chat_history": messages}
+
     
     response = result["answer"]
     typeresponse = 'Interaccion'
@@ -576,9 +612,12 @@ def chatbot_message(messagedata: MessageApi, id_interaction, idrow, promp1):
 ## ENVIA RECLAMOS USANDO LANGCHAIN
 def send_message(messagedata: MessageApi):
 
-
+    global solution
     ##MODELO DE LENGUAJE
     llm_provider = os.environ["LLM_PROVIDER"] 
+
+    
+
 
     if llm_provider == "openai":
         llm_name = os.environ["LLM"] 
@@ -586,18 +625,21 @@ def send_message(messagedata: MessageApi):
     elif llm_provider == "anthropic":
         llm_name = os.environ["LLM_ANTHROPIC"] 
         llm = ChatAnthropic(
-                model="claude-3-5-sonnet-20241022",
-                temperature=0,
-                anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
-            )
+                    model="claude-3-5-sonnet-20241022",
+                    temperature=0,
+                    anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+                )
     else:
         llm_name = os.environ["LLM"] 
-        llm = ChatOpenAI(model_name=llm_name, temperature=0)    
+        llm = ChatOpenAI(model_name=llm_name, temperature=0) 
+    
 
 
+   
     #CONEXION
     miConexion = MySQLdb.connect( host=hostMysql, user= userMysql, passwd=passwordMysql, db=dbMysql )
     mycursor = miConexion.cursor()
+
 
 
     #BUSCA LA EMPRESA
@@ -618,7 +660,7 @@ def send_message(messagedata: MessageApi):
                                     		 ELSE 0
                                       END fuera_time_max   
                                     , whatsappapi                          
-                        FROM iar2_empresas WHERE typechatbot = 'HTML' AND codempresa = '%s'""" % (messagedata.enterprise))
+                        FROM iar2_empresas WHERE typechatbot = '%s' AND codempresa = '%s'""" % (solution, messagedata.enterprise))
 
     idempresa = 0
     promp1 = ''
@@ -635,6 +677,8 @@ def send_message(messagedata: MessageApi):
         fuera_time_min = row_empresa[10]
         fuera_time_max = row_empresa[11]
         whatsappapi = row_empresa[12]
+
+
 
 
     #VALIDACION DE EMPRESA
@@ -655,6 +699,9 @@ def send_message(messagedata: MessageApi):
     ###########################################################################################################
 
     ## LIMPIAR REGISTRO EN CASO DE PROBAR NUEVAMENTE
+
+
+
 
     ## CASO 1: LIMPIEZA REGISTRO    
     if messagedata.message == 'Limpiar registro':
@@ -680,6 +727,7 @@ def send_message(messagedata: MessageApi):
         tiene_mensaje = 1
         id_interaction = row_interaction[0]
         derivation = row_interaction[1]
+
 
 
     ## CASO 2: INTERACCION NUEVA - SALUDO
@@ -735,6 +783,8 @@ def send_message(messagedata: MessageApi):
         "Indícame si en la siguiente pregunta el usuario indica de manera explícita que quiere derivar la conversación a un ejecutivo humano y terminar la conversación con el bot.  Tu respuesta debe ser SI o NO:"
         "\n\n{human_input}"
     )
+
+
     # chain 2: input= English_Review and output= summary
     #chain_derivarion = LLMChain(llm=llm, prompt=derivation_prompt,
     #                    output_key="intencion_derivacion"
@@ -742,12 +792,17 @@ def send_message(messagedata: MessageApi):
     
     # **Cambio importante: Uso de la nueva API de LangChain**
     chain_derivarion = derivation_prompt | llm
-
+    
+  
     #response_derivacion = chain_derivarion.predict(human_input=question)
     # Ejecutar la cadena para predecir la intención de derivación
     response_text  = chain_derivarion.invoke({"human_input": question})
 
+
+    #print('---------------------------------------------------------')
+    #print(response_text)
     response_derivacion = response_text.content
+    #print(response_derivacion)
 
     ## CASO 4: CLIENTE PIDE AHORA DERIVACION
     if response_derivacion == 'SI':
@@ -798,7 +853,7 @@ def get_messages(enterprise: str):
 
 def finish_message():
 
-
+    global solution
     apirest_url = os.environ["IP_APIREST"]
     prefix_url = os.environ["PREFIX_APIREST"]
 
@@ -815,7 +870,7 @@ def finish_message():
                         FROM        iar2_interaction i
                         INNER JOIN  iar2_empresas e on i.identerprise = e.id 
                         WHERE       i.finish = 0
-                        AND         e.typechatbot = 'FAQ'""")
+                        AND         e.typechatbot = '%s'"""% (solution))
     #mycursor.execute("SELECT DISTINCT typemessage, valuetype, identerprise FROM iar2_captura WHERE created_at BETWEEN DATE_ADD(NOW(), INTERVAL -3 DAY) AND NOW()")
 
     typemessage = ''
