@@ -183,3 +183,38 @@ ALTER TABLE `iar2_empresas`
 ALTER TABLE `iar2_empresas`
 	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF','API','OIRS_T','HTML','SEMANTICO') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;
 		
+/************************************************************************************************************************************/
+
+CREATE TABLE `iar2_multiple` (
+	`id` INT(11) NOT NULL AUTO_INCREMENT,
+	`identerprise` INT(11) NULL DEFAULT '0',
+	`file_path` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	`url_path` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	`text_context` TEXT NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci',
+	PRIMARY KEY (`id`) USING BTREE
+)
+COLLATE='utf8mb4_general_ci'
+ENGINE=InnoDB
+ROW_FORMAT=DYNAMIC
+;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `source_pdf` TINYINT NULL DEFAULT 0 AFTER `time_max`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `source_html` TINYINT(4) NULL DEFAULT '0' AFTER `source_pdf`;
+
+ALTER TABLE `iar2_empresas`
+	ADD COLUMN `source_text` TINYINT(4) NULL DEFAULT '0' AFTER `source_html`;	
+
+ALTER TABLE `iar2_multiple`
+	ADD COLUMN `tipo` ENUM('PDF','HTML','TEXTO') NULL DEFAULT NULL AFTER `identerprise`;
+
+ALTER TABLE `iar2_empresas`
+	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF','API','OIRS_T','HTML','SEMANTICO','MULTIPLE') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;	
+
+
+/*******************************************************************************************************************************************************/
+
+ALTER TABLE `iar2_empresas`
+	CHANGE COLUMN `typechatbot` `typechatbot` ENUM('Reclamos','FAQ','PDF','API','OIRS_T','HTML','SEMANTICO','STRUCT') NULL DEFAULT NULL COLLATE 'utf8mb4_general_ci' AFTER `departamento`;
